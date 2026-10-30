@@ -23,15 +23,16 @@ class KelasController extends Controller
             $query->where('jurusan_id', $request->input('jurusan_id'));
         }
 
-        $kelas = $query->orderBy('nama_kelas')->paginate(10)->withQueryString();
+        $kelas = $query->orderBy('nama_kelas')->get();
         $jurusans = Jurusan::orderBy('nama_jurusan')->get();
-        $tingkatKelas = TingkatKelas::orderBy('nama_tingkat')->get();
+        $tingkatKelas = TingkatKelas::orderBy('id')->get();
 
         return Inertia::render('kelas/Index', [
             'kelas' => $kelas,
             'jurusans' => $jurusans,
             'tingkatKelas' => $tingkatKelas,
             'filters' => $request->only(['search', 'jurusan_id']),
+            'totalCount' => Kelas::count(),
         ]);
     }
 
@@ -55,7 +56,7 @@ class KelasController extends Controller
 
         Kelas::create($validated);
 
-        return redirect()->route('kelas.index');
+        return redirect()->route('kelas.index')->with('success', 'Kelas berhasil ditambahkan.');
     }
 
     public function edit(Kelas $kelas)
@@ -79,12 +80,17 @@ class KelasController extends Controller
 
         $kelas->update($validated);
 
-        return redirect()->route('kelas.index');
+        return redirect()->route('kelas.index')->with('success', 'Data kelas berhasil diperbarui.');
     }
 
     public function destroy(Kelas $kelas)
     {
-        $kelas->delete();
-        return redirect()->route('kelas.index');
+        try {
+            $nama = $kelas->nama_kelas;
+            $kelas->delete();
+            return redirect()->route('kelas.index')->with('success', "Kelas {$nama} berhasil dihapus.");
+        } catch (\Throwable $e) {
+            return redirect()->route('kelas.index')->with('error', 'Gagal menghapus kelas: ' . $e->getMessage());
+        }
     }
 }

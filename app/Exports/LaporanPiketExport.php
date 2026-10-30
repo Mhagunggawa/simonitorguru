@@ -2,91 +2,41 @@
 
 namespace App\Exports;
 
-use App\Models\RekapKehadiran;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
-use Illuminate\Http\Request;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class LaporanPiketExport implements FromCollection, WithHeadings, WithMapping
+class LaporanPiketExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithStyles, WithTitle
 {
-    protected $request;
+    protected $records;
+    protected $periodeText;
+    protected $filters;
+    protected $settingan;
+    private $rowNumber = 0;
 
-    public function __construct(Request $request)
+    public function __construct($records, $periodeText = null, $filters = null, $settingan = null)
     {
-        $this->request = $request;
+        $this->records = $records;
+        $this->periodeText = $periodeText;
+        $this->filters = $filters;
+        $this->settingan = $settingan;
     }
 
     public function collection(): \Illuminate\Support\Enumerable
     {
-        $query = RekapKehadiran::whereNotNull('jadwal_piket_id')
-            ->with(['jadwalPiket.guruPiket', 'jadwalPiket.titik', 'jadwalMapel.guru', 'jadwalMapel.mataPelajaran', 'jadwalMapel.kelas.jurusan', 'jadwalMapel.jamPelajarans']);
-
-        if ($this->request->filled('periode')) {
-            $periode = $this->request->input('periode');
-            
-            if ($periode === 'bulanan' && $this->request->filled('bulan')) {
-                // format YYYY-MM
-                $bulan = $this->request->input('bulan');
-                $parts = explode('-', $bulan);
-                if (count($parts) === 2) {
-                    $query->whereHas('jadwalPiket', function($q) use ($parts) {
-                        $q->whereYear('tanggal_piket', $parts[0])
-                          ->whereMonth('tanggal_piket', $parts[1]);
-                    });
-                }
-            } else if ($periode === 'semester' && $this->request->filled('semester') && $this->request->filled('tahun_ajaran')) {
-                $semester = $this->request->input('semester');
-                $tahunAjaran = $this->request->input('tahun_ajaran');
-                
-                if ($semester === 'ganjil') {
-                    $startDate = \Carbon\Carbon::create($tahunAjaran, 7, 1)->startOfDay();
-                    $endDate = \Carbon\Carbon::create($tahunAjaran, 12, 31)->endOfDay();
-                } else {
-                    $startDate = \Carbon\Carbon::create($tahunAjaran + 1, 1, 1)->startOfDay();
-                    $endDate = \Carbon\Carbon::create($tahunAjaran + 1, 6, 30)->endOfDay();
-                }
-
-                $query->whereHas('jadwalPiket', function($q) use ($startDate, $endDate) {
-                    $q->whereBetween('tanggal_piket', [$startDate, $endDate]);
-                });
-            }
-        } else {
-            // Fallback for regular laporan which uses start_date and end_date
-            if ($this->request->filled('start_date')) {
-                $query->whereHas('jadwalPiket', function($q) {
-                    $q->whereDate('tanggal_piket', '>=', $this->request->input('start_date'));
-                });
-            }
-
-            if ($this->request->filled('end_date')) {
-                $query->whereHas('jadwalPiket', function($q) {
-                    $q->whereDate('tanggal_piket', '<=', $this->request->input('end_date'));
-                });
-            }
-        }
-
-        if ($this->request->filled('search')) {
-            $search = $this->request->input('search');
-            $query->where(function($sub) use ($search) {
-                $sub->whereHas('jadwalPiket.guruPiket', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.guru', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.mataPelajaran', function($q) use ($search) {
-                    $q->where('nama_mapel', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.kelas', function($q) use ($search) {
-                    $q->where('nama_kelas', 'like', "%{$search}%");
-                });
-            });
-        }
-
-        return $query->latest()->get();
+        return $this->records instanceof \Illuminate\Support\Enumerable 
+            ? $this->records 
+            : collect($this->records);
     }
 
     public function headings(): array
     {
         return [
+            'No',
             'Tanggal',
             'Nama Guru Piket (Petugas)',
             'Titik Piket',
@@ -102,30 +52,76 @@ class LaporanPiketExport implements FromCollection, WithHeadings, WithMapping
 
     public function map($row): array
     {
+        $this->rowNumber++;
+        $jp = $row->jadwal_piket ?? $row->jadwalPiket ?? null;
+        $jm = $row->jadwal_mapel ?? $row->jadwalMapel ?? null;
+
         $jamPelajaranStr = '-';
-        if ($row->jadwalMapel && $row->jadwalMapel->jamPelajarans) {
-            $jamPelajaranStr = $row->jadwalMapel->jamPelajarans->pluck('urutan_jam')->join(', ');
+        if ($jm && $jm->jamPelajarans && $jm->jamPelajarans->count() > 0) {
+            $jamPelajaranStr = $jm->jamPelajarans->pluck('urutan_jam')->join(', ');
+        } elseif ($jp && $jp->jamPelajarans && $jp->jamPelajarans->count() > 0) {
+            $jamPelajaranStr = $jp->jamPelajarans->pluck('urutan_jam')->join(', ');
         }
 
         $kelasJurusan = '-';
-        if ($row->jadwalMapel && $row->jadwalMapel->kelas) {
-            $kelasJurusan = $row->jadwalMapel->kelas->nama_kelas;
-            if ($row->jadwalMapel->kelas->jurusan) {
-                $kelasJurusan .= ' (' . $row->jadwalMapel->kelas->jurusan->nama_jurusan . ')';
+        if ($jm && $jm->kelas) {
+            $kelasJurusan = $jm->kelas->nama_kelas;
+            if ($jm->kelas->jurusan) {
+                $kelasJurusan .= ' (' . $jm->kelas->jurusan->nama_jurusan . ')';
+            }
+        }
+
+        $statusKehadiran = $row->status_kehadiran ?? '-';
+        if (!empty($row->is_piket_petugas)) {
+            $statusKehadiran .= ' (Piket)';
+        }
+
+        $tanggalStr = '-';
+        if (!empty($jp->tanggal_piket)) {
+            try {
+                $tanggalStr = \Carbon\Carbon::parse($jp->tanggal_piket)->format('d/m/Y');
+            } catch (\Exception $e) {
+                $tanggalStr = $jp->tanggal_piket;
             }
         }
 
         return [
-            $row->jadwalPiket->tanggal_piket ?? '-',
-            $row->jadwalPiket->guruPiket->name ?? '-',
-            $row->jadwalPiket->titik->nama_titik ?? '-',
-            $row->jadwalMapel->guru->name ?? '-',
-            $row->jadwalMapel->mataPelajaran->nama_mapel ?? '-',
+            $this->rowNumber,
+            $tanggalStr,
+            $jp->guruPiket->name ?? '-',
+            $jp->titik->nama_titik ?? '-',
+            $jm?->guru?->name ?? '-',
+            $jm?->mataPelajaran?->nama_mapel ?? '-',
             $kelasJurusan,
             $jamPelajaranStr,
-            $row->status_kehadiran ?? '-',
-            $row->is_terlambat ? 'Ya' : 'Tidak',
+            $statusKehadiran,
+            (!empty($row->is_terlambat)) ? 'Ya' : 'Tidak',
             $row->keterangan ?? '-'
         ];
+    }
+
+    public function styles(Worksheet $sheet): ?array
+    {
+        return [
+            1 => [
+                'font' => [
+                    'bold' => true,
+                    'color' => ['rgb' => 'FFFFFF'],
+                ],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '1E293B'], // Dark slate
+                ],
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                ],
+            ],
+        ];
+    }
+
+    public function title(): string
+    {
+        return 'Rekap Piket';
     }
 }

@@ -24,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('pelaporan-piket', [\App\Http\Controllers\PelaporanPiketController::class, 'index'])->name('pelaporan-piket.index');
         Route::get('pelaporan-piket/{id}/create', [\App\Http\Controllers\PelaporanPiketController::class, 'create'])->name('pelaporan-piket.create');
         Route::post('pelaporan-piket', [\App\Http\Controllers\PelaporanPiketController::class, 'store'])->name('pelaporan-piket.store');
+        Route::post('pelaporan-piket/{id}/izin-sakit', [\App\Http\Controllers\PelaporanPiketController::class, 'ajukanIzinSakit'])->name('pelaporan-piket.izin-sakit');
         Route::get('absensi-gms/create', [\App\Http\Controllers\AbsensiGmsController::class, 'create'])->name('absensi-gms.create');
         Route::post('absensi-gms', [\App\Http\Controllers\AbsensiGmsController::class, 'store'])->name('absensi-gms.store');
     });
@@ -39,6 +40,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::middleware(['role:super admin,admin'])->group(function () {
         Route::resource('users', \App\Http\Controllers\UserController::class);
+        Route::get('pegawai-administrasi/template', [\App\Http\Controllers\PegawaiAdministrasiController::class, 'template'])->name('pegawai-administrasi.template');
+        Route::post('pegawai-administrasi/import', [\App\Http\Controllers\PegawaiAdministrasiController::class, 'import'])->name('pegawai-administrasi.import');
+        Route::resource('pegawai-administrasi', \App\Http\Controllers\PegawaiAdministrasiController::class);
         Route::resource('mata-pelajaran', \App\Http\Controllers\MataPelajaranController::class)->parameters([
             'mata-pelajaran' => 'mataPelajaran'
         ]);

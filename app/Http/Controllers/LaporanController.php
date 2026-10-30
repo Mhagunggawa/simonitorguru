@@ -6,36 +6,27 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Models\RekapKehadiran;
 use App\Models\AbsensiGms;
+use App\Models\JadwalPiket;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Carbon\Carbon;
 
 class LaporanController extends Controller
 {
-    public function piket(Request $request)
+    public function getPiketCombinedRecords(Request $request)
     {
         $dates = $this->getPeriodeDates($request);
+
+        // 1. Rekap pemantauan kelas oleh guru piket
         $query = RekapKehadiran::whereNotNull('jadwal_piket_id')
             ->with([
                 'jadwalPiket.guruPiket',
                 'jadwalPiket.titik',
+                'jadwalPiket.jamPelajarans',
                 'jadwalMapel.guru',
                 'jadwalMapel.mataPelajaran',
                 'jadwalMapel.kelas.jurusan',
                 'jadwalMapel.jamPelajarans'
             ]);
-
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function($sub) use ($search) {
-                $sub->whereHas('jadwalPiket.guruPiket', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.guru', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.mataPelajaran', function($q) use ($search) {
-                    $q->where('nama_mapel', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.kelas', function($q) use ($search) {
-                    $q->where('nama_kelas', 'like', "%{$search}%");
-                });
-            });
-        }
 
         if ($dates) {
             $query->whereHas('jadwalPiket', function($q) use ($dates) {
@@ -44,7 +35,113 @@ class LaporanController extends Controller
             });
         }
 
-        $laporan = $query->latest()->paginate(10)->withQueryString();
+        $rekapRecords = $query->get()->map(function($r) {
+            $r->is_piket_petugas = false;
+            return $r;
+        });
+
+        // 2. Jadwal Piket tanpa laporan (Izin, Sakit, atau Alpha)
+        $piketQuery = JadwalPiket::with([
+            'guruPiket',
+            'titik',
+            'jamPelajarans',
+            'rekapKehadirans'
+        ]);
+
+        if ($dates) {
+            $piketQuery->whereDate('tanggal_piket', '>=', $dates[0])
+                       ->whereDate('tanggal_piket', '<=', $dates[1]);
+        }
+
+        $unreportedPikets = $piketQuery->get()->filter(function($jp) {
+            return $jp->rekapKehadirans->count() === 0;
+        });
+
+        $piketStatusRows = collect();
+        foreach ($unreportedPikets as $jp) {
+            $status = $jp->getEvaluatedStatus();
+
+            if (in_array($status, ['Izin', 'Sakit', 'Alpha'])) {
+                // Auto-sync status ke DB jika Alpha dan belum tercatat
+                if ($status === 'Alpha' && $jp->status !== 'Alpha') {
+                    $jp->update(['status' => 'Alpha']);
+                }
+
+                $piketStatusRows->push((object)[
+                    'id' => 'jp_' . $jp->id,
+                    'jadwal_piket_id' => $jp->id,
+                    'jadwal_piket' => $jp,
+                    'jadwal_mapel' => null, // Kolom kelas kosong sesuai A3
+                    'status_kehadiran' => $status,
+                    'is_piket_petugas' => true,
+                    'keterangan' => $jp->keterangan ?: ($status === 'Alpha' ? 'Guru piket tidak mengisi laporan pemantauan (Alpha)' : null),
+                    'is_terlambat' => false,
+                    'foto_dokumentasi' => null,
+                    'created_at' => Carbon::parse($jp->tanggal_piket),
+                ]);
+            }
+        }
+
+        $allRecords = $rekapRecords->concat($piketStatusRows);
+
+        // Filter Pencarian
+        if ($request->filled('search')) {
+            $search = strtolower($request->input('search'));
+            $allRecords = $allRecords->filter(function($item) use ($search) {
+                $jp = $item->jadwal_piket ?? $item->jadwalPiket ?? null;
+                $jm = $item->jadwal_mapel ?? $item->jadwalMapel ?? null;
+
+                $piketGuru = strtolower($jp?->guruPiket?->name ?? '');
+                $titik = strtolower($jp?->titik?->nama_titik ?? '');
+                $mapelGuru = strtolower($jm?->guru?->name ?? '');
+                $mapel = strtolower($jm?->mataPelajaran?->nama_mapel ?? '');
+                $kelas = strtolower($jm?->kelas?->nama_kelas ?? '');
+                $status = strtolower($item->status_kehadiran ?? '');
+
+                return str_contains($piketGuru, $search) ||
+                       str_contains($titik, $search) ||
+                       str_contains($mapelGuru, $search) ||
+                       str_contains($mapel, $search) ||
+                       str_contains($kelas, $search) ||
+                       str_contains($status, $search);
+            });
+        }
+
+        // Filter Status Kehadiran (Hadir, Terlambat, Izin, Sakit, Alpha)
+        if ($request->filled('status') && $request->input('status') !== 'semua') {
+            $statusFilter = strtolower($request->input('status'));
+            $allRecords = $allRecords->filter(function($item) use ($statusFilter) {
+                if ($statusFilter === 'terlambat') {
+                    return !empty($item->is_terlambat);
+                }
+                return strtolower($item->status_kehadiran ?? '') === $statusFilter;
+            });
+        }
+
+        return $allRecords->sortByDesc(function($item) {
+            $jp = $item->jadwal_piket ?? $item->jadwalPiket ?? null;
+            $date = $jp?->tanggal_piket ?? ($item->created_at ? $item->created_at->format('Y-m-d') : '1970-01-01');
+            $time = $item->created_at ? $item->created_at->format('H:i:s') : '00:00:00';
+            return $date . ' ' . $time;
+        })->values();
+    }
+
+    public function piket(Request $request)
+    {
+        $allRecords = $this->getPiketCombinedRecords($request);
+
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $perPage = 10;
+        $laporan = new LengthAwarePaginator(
+            $allRecords->forPage($page, $perPage)->values(),
+            $allRecords->count(),
+            $perPage,
+            $page,
+            [
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'query' => $request->query()
+            ]
+        );
 
         return Inertia::render('laporan/Piket', [
             'laporan' => $laporan,
@@ -298,41 +395,52 @@ class LaporanController extends Controller
 
     public function exportPiketPdf(Request $request)
     {
+        Carbon::setLocale('id');
         $dates = $this->getPeriodeDates($request);
-        $query = RekapKehadiran::whereNotNull('jadwal_piket_id')
-            ->with(['jadwalPiket.guruPiket', 'jadwalPiket.titik', 'jadwalMapel.guru', 'jadwalMapel.mataPelajaran', 'jadwalMapel.kelas.jurusan', 'jadwalMapel.jamPelajarans']);
+        $laporan = $this->getPiketCombinedRecords($request);
+        $settingan = \App\Models\Settingan::first();
+        $periodeText = $this->getPeriodeText($request, $dates);
+        $filters = $this->getFilters($request);
 
-        if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function($sub) use ($search) {
-                $sub->whereHas('jadwalPiket.guruPiket', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.guru', function($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.mataPelajaran', function($q) use ($search) {
-                    $q->where('nama_mapel', 'like', "%{$search}%");
-                })->orWhereHas('jadwalMapel.kelas', function($q) use ($search) {
-                    $q->where('nama_kelas', 'like', "%{$search}%");
-                });
-            });
-        }
+        $totalHadir = $laporan->where('status_kehadiran', 'Hadir')->count();
+        $totalTerlambat = $laporan->where('is_terlambat', true)->count();
+        $totalIzin = $laporan->where('status_kehadiran', 'Izin')->count();
+        $totalSakit = $laporan->where('status_kehadiran', 'Sakit')->count();
+        $totalAlpha = $laporan->where('status_kehadiran', 'Alpha')->count();
 
-        if ($dates) {
-            $query->whereHas('jadwalPiket', function($q) use ($dates) {
-                $q->whereDate('tanggal_piket', '>=', $dates[0])
-                  ->whereDate('tanggal_piket', '<=', $dates[1]);
-            });
-        }
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.piket_pdf', compact(
+            'laporan',
+            'settingan',
+            'periodeText',
+            'filters',
+            'totalHadir',
+            'totalTerlambat',
+            'totalIzin',
+            'totalSakit',
+            'totalAlpha'
+        ))->setPaper('a4', 'landscape');
 
-        $laporan = $query->latest()->get();
-        
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.piket_pdf', compact('laporan'));
-        return $pdf->download('Laporan_Piket.pdf');
+        $safePeriode = \Illuminate\Support\Str::slug($periodeText, '_');
+        $filename = 'Laporan_Piket_' . ($safePeriode ?: date('Ymd_His')) . '.pdf';
+        return $pdf->download($filename);
     }
 
     public function exportPiketExcel(Request $request)
     {
-        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\LaporanPiketExport($request), 'Laporan_Piket.xlsx');
+        Carbon::setLocale('id');
+        $dates = $this->getPeriodeDates($request);
+        $records = $this->getPiketCombinedRecords($request);
+        $periodeText = $this->getPeriodeText($request, $dates);
+        $filters = $this->getFilters($request);
+        $settingan = \App\Models\Settingan::first();
+
+        $safePeriode = \Illuminate\Support\Str::slug($periodeText, '_');
+        $filename = 'Laporan_Piket_' . ($safePeriode ?: date('Ymd_His')) . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\LaporanPiketExport($records, $periodeText, $filters, $settingan),
+            $filename
+        );
     }
 
     public function exportGmsPdf(Request $request)
@@ -502,5 +610,44 @@ class LaporanController extends Controller
         $startOfCurrentWeek = $date->copy()->startOfWeek(\Carbon\Carbon::MONDAY);
         
         return $startOfFirstWeek->diffInWeeks($startOfCurrentWeek) + 1;
+    }
+
+    private function getPeriodeText(Request $request, $dates)
+    {
+        Carbon::setLocale('id');
+        $filterType = $request->input('filter_type', 'minggu');
+        $now = Carbon::now();
+
+        if ($filterType === 'semua') {
+            return 'Semua Data';
+        } elseif ($filterType === 'minggu') {
+            $tahun = (int) $request->input('filter_tahun', $now->year);
+            $bulan = (int) $request->input('filter_bulan', $now->month);
+            $minggu = (int) $request->input('filter_minggu', $this->calculateWeekOfMonth($now));
+            $namaBulan = Carbon::create($tahun, $bulan, 1)->translatedFormat('F');
+            $rangeText = $dates ? ' (' . $dates[0]->translatedFormat('d M Y') . ' s/d ' . $dates[1]->translatedFormat('d M Y') . ')' : '';
+            return "Minggu ke-{$minggu}, Bulan {$namaBulan} {$tahun}{$rangeText}";
+        } elseif ($filterType === 'bulan') {
+            $tahun = (int) $request->input('filter_tahun', $now->year);
+            $bulan = (int) $request->input('filter_bulan', $now->month);
+            $namaBulan = Carbon::create($tahun, $bulan, 1)->translatedFormat('F');
+            return "Bulan {$namaBulan} {$tahun}";
+        } elseif ($filterType === 'semester') {
+            $tahun = (int) $request->input('filter_tahun', $now->year);
+            $semester = $request->input('filter_semester', $now->month >= 7 ? 'Ganjil' : 'Genap');
+            return "Semester {$semester} Tahun {$tahun}";
+        } elseif ($filterType === 'tahun') {
+            $tahun = (int) $request->input('filter_tahun', $now->year);
+            return "Tahun {$tahun}";
+        } elseif ($filterType === 'kustom') {
+            $start = $request->input('start_date');
+            $end = $request->input('end_date');
+            if ($start && $end) {
+                return Carbon::parse($start)->translatedFormat('d M Y') . ' s/d ' . Carbon::parse($end)->translatedFormat('d M Y');
+            }
+            return 'Periode Kustom';
+        }
+
+        return 'Semua Data';
     }
 }

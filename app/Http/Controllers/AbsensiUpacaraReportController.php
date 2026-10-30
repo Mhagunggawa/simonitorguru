@@ -26,8 +26,8 @@ class AbsensiUpacaraReportController extends Controller
             $period = $defaultPeriod;
         }
 
-        // Ambil data absensi upacara khusus pada bulan dan tahun yang dipilih
-        $attendancesData = AbsensiUpacara::with('user')
+        // Ambil data absensi upacara khusus pada bulan dan tahun yang dipilih (Guru & Pegawai)
+        $attendancesData = AbsensiUpacara::with(['user', 'pegawaiAdministrasi'])
             ->whereYear('tanggal', $year)
             ->whereMonth('tanggal', $month)
             ->orderBy('tanggal', 'desc')
@@ -45,32 +45,48 @@ class AbsensiUpacaraReportController extends Controller
         $totalMonthlyIzin = 0;
 
         foreach ($groupedByDate as $date => $attendances) {
-            $hadirList = $attendances->filter(function($a) {
+            $hadirAll = $attendances->filter(function($a) {
                 return $a->is_hadir || $a->status === 'Hadir';
             })->map(function($a) {
+                $isGuru = !empty($a->user_id);
+                $name = $isGuru ? ($a->user->name ?? 'Unknown') : ($a->pegawaiAdministrasi->nama ?? 'Unknown');
+                $roleLabel = $isGuru ? ($a->user->role === 'wakasek' ? 'Wakasek' : 'Guru') : 'Pegawai Administrasi';
                 return [
-                    'id' => $a->user->id ?? 0,
-                    'name' => $a->user->name ?? 'Unknown',
+                    'id' => $isGuru ? $a->user_id : $a->pegawai_administrasi_id,
+                    'type' => $isGuru ? 'guru' : 'pegawai',
+                    'role_label' => $roleLabel,
+                    'name' => $name,
                     'status' => 'Hadir',
                 ];
             })->values();
 
-            $tidakHadirList = $attendances->filter(function($a) {
+            $tidakHadirAll = $attendances->filter(function($a) {
                 return !$a->is_hadir && in_array($a->status, ['Alpha', 'Sakit', 'Izin']);
             })->map(function($a) {
+                $isGuru = !empty($a->user_id);
+                $name = $isGuru ? ($a->user->name ?? 'Unknown') : ($a->pegawaiAdministrasi->nama ?? 'Unknown');
+                $roleLabel = $isGuru ? ($a->user->role === 'wakasek' ? 'Wakasek' : 'Guru') : 'Pegawai Administrasi';
                 return [
-                    'id' => $a->user->id ?? 0,
-                    'name' => $a->user->name ?? 'Unknown',
+                    'id' => $isGuru ? $a->user_id : $a->pegawai_administrasi_id,
+                    'type' => $isGuru ? 'guru' : 'pegawai',
+                    'role_label' => $roleLabel,
+                    'name' => $name,
                     'status' => $a->status ?? 'Alpha',
                     'keterangan' => $a->keterangan ?? '',
                 ];
             })->values();
 
-            $hadirCount = $hadirList->count();
-            $tidakHadirCount = $tidakHadirList->count();
-            $alphaCount = $tidakHadirList->where('status', 'Alpha')->count();
-            $sakitCount = $tidakHadirList->where('status', 'Sakit')->count();
-            $izinCount = $tidakHadirList->where('status', 'Izin')->count();
+            $guruHadir = $hadirAll->where('type', 'guru')->values();
+            $pegawaiHadir = $hadirAll->where('type', 'pegawai')->values();
+
+            $guruTidakHadir = $tidakHadirAll->where('type', 'guru')->values();
+            $pegawaiTidakHadir = $tidakHadirAll->where('type', 'pegawai')->values();
+
+            $hadirCount = $hadirAll->count();
+            $tidakHadirCount = $tidakHadirAll->count();
+            $alphaCount = $tidakHadirAll->where('status', 'Alpha')->count();
+            $sakitCount = $tidakHadirAll->where('status', 'Sakit')->count();
+            $izinCount = $tidakHadirAll->where('status', 'Izin')->count();
 
             $totalMonthlyHadir += $hadirCount;
             $totalMonthlyTidakHadir += $tidakHadirCount;
@@ -81,8 +97,12 @@ class AbsensiUpacaraReportController extends Controller
             $formattedReports[] = [
                 'tanggal' => $date,
                 'tanggal_format' => Carbon::parse($date)->translatedFormat('l, d F Y'),
-                'hadir' => $hadirList,
-                'tidak_hadir' => $tidakHadirList,
+                'hadir' => $hadirAll,
+                'tidak_hadir' => $tidakHadirAll,
+                'guru_hadir' => $guruHadir,
+                'pegawai_hadir' => $pegawaiHadir,
+                'guru_tidak_hadir' => $guruTidakHadir,
+                'pegawai_tidak_hadir' => $pegawaiTidakHadir,
                 'total_hadir' => $hadirCount,
                 'total_tidak_hadir' => $tidakHadirCount,
                 'total_alpha' => $alphaCount,

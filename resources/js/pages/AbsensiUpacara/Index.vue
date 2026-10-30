@@ -31,7 +31,12 @@ import { ref, watch, computed } from "vue";
 import Swal from 'sweetalert2';
 
 interface TeacherAttendance {
-    user_id: number;
+    id?: number;
+    user_id?: number | null;
+    pegawai_administrasi_id?: number | null;
+    id_ref: string;
+    type: 'guru' | 'pegawai';
+    type_label: string;
     name: string;
     status: 'Hadir' | 'Alpha' | 'Sakit' | 'Izin' | null;
     is_hadir: boolean;
@@ -43,6 +48,8 @@ interface TeacherAttendance {
 const props = defineProps<{
     date: string;
     teachers: any[];
+    totalTeachers?: number;
+    totalPegawai?: number;
 }>();
 
 const selectedDate = ref(props.date);
@@ -55,7 +62,12 @@ const initList = (teachers: any[]): TeacherAttendance[] => {
         const isHadir = t.status === 'Hadir' || (t.is_hadir && !t.status);
         const isTidakHadir = ['Alpha', 'Sakit', 'Izin'].includes(t.status);
         return {
-            user_id: t.user_id,
+            id: t.id,
+            user_id: t.user_id ?? null,
+            pegawai_administrasi_id: t.pegawai_administrasi_id ?? null,
+            id_ref: t.id_ref || (t.user_id ? `guru-${t.user_id}` : `pegawai-${t.pegawai_administrasi_id}`),
+            type: t.type || (t.user_id ? 'guru' : 'pegawai'),
+            type_label: t.type_label || (t.user_id ? 'Guru' : 'Pegawai Administrasi'),
             name: t.name,
             status: t.status || (isHadir ? 'Hadir' : null),
             is_hadir: isHadir,
@@ -230,8 +242,8 @@ const resetKetidakhadiran = () => {
 // Batch marks
 const markAllHadir = () => {
     Swal.fire({
-        title: 'Hadirkan Semua Guru?',
-        text: 'Semua guru yang belum memiliki keterangan akan ditandai sebagai Hadir.',
+        title: 'Hadirkan Semua?',
+        text: 'Semua guru dan pegawai yang belum memiliki keterangan akan ditandai sebagai Hadir.',
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#10b981',
@@ -292,6 +304,7 @@ const submit = () => {
             form.date = selectedDate.value;
             form.attendances = attendanceList.value.map(a => ({
                 user_id: a.user_id,
+                pegawai_administrasi_id: a.pegawai_administrasi_id,
                 status: a.status,
                 is_hadir: a.status === 'Hadir',
                 keterangan: a.keterangan
@@ -336,7 +349,7 @@ const submit = () => {
                     Absensi Upacara Bendera
                 </h1>
                 <p class="text-slate-500 dark:text-slate-400 mt-1 md:mt-2 max-w-2xl text-xs md:text-base leading-relaxed">
-                    Kelola kehadiran dan ketidakhadiran upacara bendera untuk guru dan wakasek. Centang hadir atau tetapkan alasan jika tidak hadir.
+                    Kelola kehadiran dan ketidakhadiran upacara bendera untuk guru, wakasek, dan pegawai administrasi. Centang hadir atau tetapkan alasan jika tidak hadir.
                 </p>
             </div>
             <div class="flex items-center gap-2 md:gap-3">
@@ -480,7 +493,7 @@ const submit = () => {
                         <thead class="text-xs text-slate-600 uppercase bg-slate-100/70 dark:bg-slate-900 border-b dark:border-slate-800">
                             <tr>
                                 <th scope="col" class="px-4 py-3.5 font-bold w-14 text-center">No</th>
-                                <th scope="col" class="px-6 py-3.5 font-bold">Nama Lengkap Guru / Wakasek</th>
+                                <th scope="col" class="px-6 py-3.5 font-bold">Nama Lengkap Guru / Pegawai</th>
                                 <th scope="col" class="px-6 py-3.5 font-bold text-center w-36">
                                     <div class="flex items-center justify-center gap-1.5 text-emerald-700 dark:text-emerald-400">
                                         <CheckCircle2 class="w-4 h-4" />
@@ -498,7 +511,7 @@ const submit = () => {
                         <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
                             <tr 
                                 v-for="(teacher, index) in filteredTeachers" 
-                                :key="teacher.user_id" 
+                                :key="teacher.id_ref" 
                                 class="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
                                 :class="{
                                     'bg-emerald-50/20 dark:bg-emerald-950/10': teacher.status === 'Hadir',
@@ -510,9 +523,20 @@ const submit = () => {
                                 <td class="px-4 py-4 text-center text-slate-500 font-medium">{{ index + 1 }}</td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-between gap-2">
-                                        <span class="font-medium text-slate-900 dark:text-slate-100 text-sm md:text-base">
-                                            {{ teacher.name }}
-                                        </span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-slate-900 dark:text-slate-100 text-sm md:text-base">
+                                                {{ teacher.name }}
+                                            </span>
+                                            <Badge 
+                                                variant="outline" 
+                                                class="text-[10px] font-semibold py-0 px-2"
+                                                :class="teacher.type === 'pegawai' 
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800' 
+                                                    : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'"
+                                            >
+                                                {{ teacher.type_label }}
+                                            </Badge>
+                                        </div>
                                         <span v-if="teacher.keterangan" class="text-xs text-slate-500 italic truncate max-w-xs" :title="teacher.keterangan">
                                             Catatan: {{ teacher.keterangan }}
                                         </span>
@@ -524,7 +548,7 @@ const submit = () => {
                                     <div class="flex flex-col items-center justify-center gap-1">
                                         <input 
                                             type="checkbox"
-                                            :id="`check-hadir-${teacher.user_id}`"
+                                            :id="`check-hadir-${teacher.id_ref}`"
                                             :checked="teacher.status === 'Hadir'"
                                             @change="handleHadirClick(teacher)"
                                             class="w-5 h-5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 focus:ring-offset-0 cursor-pointer accent-emerald-600 transition-transform active:scale-95"
@@ -544,7 +568,7 @@ const submit = () => {
                                     <div class="flex flex-col items-center justify-center gap-1">
                                         <input 
                                             type="checkbox"
-                                            :id="`check-tidakhadir-${teacher.user_id}`"
+                                            :id="`check-tidakhadir-${teacher.id_ref}`"
                                             :checked="teacher.is_tidak_hadir"
                                             @click.prevent="handleTidakHadirClick(teacher)"
                                             class="w-5 h-5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 focus:ring-offset-0 cursor-pointer accent-rose-600 transition-transform active:scale-95"
@@ -582,7 +606,7 @@ const submit = () => {
                                 <td colspan="4" class="px-6 py-12 text-center text-slate-500">
                                     <div class="flex flex-col items-center justify-center gap-2">
                                         <Users class="w-8 h-8 text-slate-300" />
-                                        <p class="text-sm font-medium">Tidak ada data guru yang cocok dengan filter pencarian.</p>
+                                        <p class="text-sm font-medium">Tidak ada data guru atau pegawai yang cocok dengan filter pencarian.</p>
                                     </div>
                                 </td>
                             </tr>
@@ -594,7 +618,7 @@ const submit = () => {
                 <div class="block md:hidden p-3 space-y-2.5 bg-slate-50/50 dark:bg-slate-950/40">
                     <div 
                         v-for="(teacher, index) in filteredTeachers" 
-                        :key="teacher.user_id"
+                        :key="teacher.id_ref"
                         class="p-3.5 rounded-2xl border transition-all shadow-xs bg-white dark:bg-slate-900"
                         :class="{
                             'border-emerald-300/90 bg-emerald-50/30 dark:bg-emerald-950/20 dark:border-emerald-800': teacher.status === 'Hadir',
@@ -610,9 +634,22 @@ const submit = () => {
                                 <span class="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold text-[10px] flex items-center justify-center shrink-0">
                                     {{ index + 1 }}
                                 </span>
-                                <span class="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug line-clamp-2">
-                                    {{ teacher.name }}
-                                </span>
+                                <div class="flex flex-col min-w-0">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug">
+                                            {{ teacher.name }}
+                                        </span>
+                                        <Badge 
+                                            variant="outline" 
+                                            class="text-[9px] font-semibold py-0 px-1.5"
+                                            :class="teacher.type === 'pegawai' 
+                                                ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                                : 'bg-slate-100 text-slate-600 border-slate-200'"
+                                        >
+                                            {{ teacher.type_label }}
+                                        </Badge>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Status Badge di Pojok Kanan -->
@@ -710,7 +747,7 @@ const submit = () => {
                     <!-- Empty State Mobile -->
                     <div v-if="filteredTeachers.length === 0" class="py-10 text-center bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
                         <Users class="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                        <p class="text-sm font-medium text-slate-500">Tidak ada data guru yang cocok dengan filter.</p>
+                        <p class="text-sm font-medium text-slate-500">Tidak ada data guru atau pegawai yang cocok dengan filter.</p>
                     </div>
                 </div>
             </CardContent>

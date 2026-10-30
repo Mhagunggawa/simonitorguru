@@ -22,29 +22,48 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::with('tipeGuru');
+        $search = $request->input('search');
+        $role = $request->input('role');
 
-        if (\Illuminate\Support\Facades\Auth::user()->role === 'admin') {
-            $query->whereNotIn('role', ['super admin', 'admin']);
-        }
+        // 1. Query Administrator (Super Admin & Admin)
+        $adminQuery = User::whereIn('role', ['super admin', 'admin']);
 
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function($q) use ($search) {
+            $adminQuery->where(function($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
-        if ($request->filled('role') && $request->input('role') !== 'semua') {
-            $query->where('role', $request->input('role'));
+        if ($request->filled('role') && $role !== 'semua') {
+            $adminQuery->where('role', $role);
         }
 
-        $users = $query->orderBy('name')->paginate(10)->withQueryString();
+        $adminUsers = $adminQuery->orderBy('role', 'desc')->orderBy('name')->get();
+
+        // 2. Query Guru & Tenaga Pendidik (Guru, Wakasek, Kepsek)
+        $guruQuery = User::with('tipeGuru')->whereNotIn('role', ['super admin', 'admin']);
+
+        if ($request->filled('search')) {
+            $guruQuery->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('role') && $role !== 'semua') {
+            $guruQuery->where('role', $role);
+        }
+
+        $guruUsers = $guruQuery->orderBy('name')->paginate(10)->withQueryString();
 
         return Inertia::render('users/Index', [
-            'users' => $users,
+            'adminUsers' => $adminUsers,
+            'guruUsers' => $guruUsers,
+            'users' => $guruUsers, // backward compatibility
             'filters' => $request->only(['search', 'role']),
+            'totalAdmins' => User::whereIn('role', ['super admin', 'admin'])->count(),
+            'totalGurus' => User::whereNotIn('role', ['super admin', 'admin'])->count(),
         ]);
     }
 

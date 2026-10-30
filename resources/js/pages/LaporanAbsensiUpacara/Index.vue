@@ -79,7 +79,7 @@ const expandAll = (status: boolean) => {
                     Laporan Absensi Upacara
                 </h1>
                 <p class="text-slate-500 dark:text-slate-400 mt-2 max-w-2xl text-sm md:text-base leading-relaxed">
-                    Rekapitulasi kehadiran upacara bendera guru dan wakasek periode <span class="font-bold text-slate-800 dark:text-slate-200">{{ filter.period_label }}</span>.
+                    Rekapitulasi kehadiran upacara bendera guru, wakasek, dan pegawai administrasi periode <span class="font-bold text-slate-800 dark:text-slate-200">{{ filter.period_label }}</span>.
                 </p>
             </div>
 
@@ -173,9 +173,15 @@ const expandAll = (status: boolean) => {
                                     <div class="flex flex-wrap items-center gap-2 mt-1">
                                         <Badge variant="outline" class="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs py-0">
                                             {{ report.total_hadir }} Hadir
+                                            <span v-if="report.guru_hadir || report.pegawai_hadir" class="ml-1 text-[11px] opacity-80">
+                                                ({{ report.guru_hadir?.length || 0 }} Guru, {{ report.pegawai_hadir?.length || 0 }} Pegawai)
+                                            </span>
                                         </Badge>
                                         <Badge v-if="report.total_tidak_hadir > 0" variant="outline" class="bg-rose-50 text-rose-700 border-rose-200 text-xs py-0">
                                             {{ report.total_tidak_hadir }} Tidak Hadir
+                                            <span v-if="report.guru_tidak_hadir || report.pegawai_tidak_hadir" class="ml-1 text-[11px] opacity-80">
+                                                ({{ report.guru_tidak_hadir?.length || 0 }} Guru, {{ report.pegawai_tidak_hadir?.length || 0 }} Pegawai)
+                                            </span>
                                         </Badge>
                                         <span v-if="report.total_tidak_hadir > 0" class="text-xs text-slate-400">
                                             ({{ report.total_alpha ? report.total_alpha + ' Alpha' : '' }}
@@ -191,17 +197,17 @@ const expandAll = (status: boolean) => {
                             </div>
                         </div>
 
-                        <!-- Expanded Content (Detail Teachers) -->
-                        <div v-show="expandedDates[report.tanggal]" class="bg-slate-50/50 dark:bg-slate-900/20 px-4 pb-6 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-4">
-                            <!-- Section: Guru Hadir -->
+                        <!-- Expanded Content (Detail Guru & Pegawai) -->
+                        <div v-show="expandedDates[report.tanggal]" class="bg-slate-50/50 dark:bg-slate-900/20 px-4 pb-6 pt-2 border-t border-slate-100 dark:border-slate-800 space-y-5">
+                            <!-- Section 1: Guru Hadir -->
                             <div>
                                 <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5 mb-2.5">
                                     <CheckCircle2 class="w-4 h-4" />
-                                    Daftar Guru Hadir ({{ report.hadir.length }})
+                                    Daftar Guru &amp; Wakasek Hadir ({{ report.guru_hadir ? report.guru_hadir.length : report.hadir.length }})
                                 </h4>
-                                <ul v-if="report.hadir.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                <ul v-if="(report.guru_hadir || report.hadir).length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                                     <li 
-                                        v-for="teacher in report.hadir" 
+                                        v-for="teacher in (report.guru_hadir || report.hadir)" 
                                         :key="teacher.id"
                                         class="flex items-center gap-2.5 p-2.5 bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs"
                                     >
@@ -214,15 +220,35 @@ const expandAll = (status: boolean) => {
                                 <p v-else class="text-xs text-slate-400 italic">Tidak ada guru yang hadir pada tanggal ini.</p>
                             </div>
 
-                            <!-- Section: Guru Tidak Hadir -->
-                            <div v-if="report.tidak_hadir && report.tidak_hadir.length > 0" class="pt-2 border-t border-slate-200/60 dark:border-slate-800">
-                                <h4 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5 mb-2.5">
-                                    <XCircle class="w-4 h-4" />
-                                    Daftar Guru Tidak Hadir ({{ report.tidak_hadir.length }})
+                            <!-- Section 2: Pegawai Administrasi Hadir -->
+                            <div v-if="report.pegawai_hadir && report.pegawai_hadir.length > 0" class="pt-3 border-t border-slate-200/60 dark:border-slate-800">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5 mb-2.5">
+                                    <CheckCircle2 class="w-4 h-4" />
+                                    Daftar Pegawai Administrasi Hadir ({{ report.pegawai_hadir.length }})
                                 </h4>
                                 <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                                     <li 
-                                        v-for="teacher in report.tidak_hadir" 
+                                        v-for="pegawai in report.pegawai_hadir" 
+                                        :key="pegawai.id"
+                                        class="flex items-center gap-2.5 p-2.5 bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs"
+                                    >
+                                        <div class="w-7 h-7 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-600 flex items-center justify-center shrink-0">
+                                            <CheckCircle2 class="w-4 h-4" />
+                                        </div>
+                                        <span class="font-medium text-xs md:text-sm text-slate-800 dark:text-slate-200 truncate">{{ pegawai.name }}</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Section 3: Guru Tidak Hadir -->
+                            <div v-if="(report.guru_tidak_hadir || report.tidak_hadir)?.length > 0" class="pt-3 border-t border-slate-200/60 dark:border-slate-800">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5 mb-2.5">
+                                    <XCircle class="w-4 h-4" />
+                                    Daftar Guru &amp; Wakasek Tidak Hadir ({{ (report.guru_tidak_hadir || report.tidak_hadir).length }})
+                                </h4>
+                                <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                    <li 
+                                        v-for="teacher in (report.guru_tidak_hadir || report.tidak_hadir)" 
                                         :key="teacher.id"
                                         class="flex items-start justify-between gap-2 p-2.5 bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs"
                                     >
@@ -241,6 +267,38 @@ const expandAll = (status: boolean) => {
                                             class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 shrink-0"
                                         >
                                             {{ teacher.status }}
+                                        </Badge>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Section 4: Pegawai Administrasi Tidak Hadir -->
+                            <div v-if="report.pegawai_tidak_hadir && report.pegawai_tidak_hadir.length > 0" class="pt-3 border-t border-slate-200/60 dark:border-slate-800">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center gap-1.5 mb-2.5">
+                                    <XCircle class="w-4 h-4" />
+                                    Daftar Pegawai Administrasi Tidak Hadir ({{ report.pegawai_tidak_hadir.length }})
+                                </h4>
+                                <ul class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                    <li 
+                                        v-for="pegawai in report.pegawai_tidak_hadir" 
+                                        :key="pegawai.id"
+                                        class="flex items-start justify-between gap-2 p-2.5 bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs"
+                                    >
+                                        <div class="flex items-center gap-2.5 min-w-0">
+                                            <div class="w-7 h-7 rounded-full text-rose-600 bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center shrink-0">
+                                                <XCircle class="w-4 h-4" />
+                                            </div>
+                                            <div class="min-w-0">
+                                                <p class="font-medium text-xs md:text-sm text-slate-800 dark:text-slate-200 truncate">{{ pegawai.name }}</p>
+                                                <p v-if="pegawai.keterangan" class="text-[11px] text-slate-400 italic truncate">{{ pegawai.keterangan }}</p>
+                                            </div>
+                                        </div>
+                                        <Badge 
+                                            variant="outline" 
+                                            :class="pegawai.status === 'Alpha' ? 'bg-rose-50 text-rose-700 border-rose-200' : (pegawai.status === 'Sakit' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-blue-700 border-blue-200')"
+                                            class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 shrink-0"
+                                        >
+                                            {{ pegawai.status }}
                                         </Badge>
                                     </li>
                                 </ul>

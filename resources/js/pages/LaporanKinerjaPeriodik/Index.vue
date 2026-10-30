@@ -4,11 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Info, BarChart3, Search, Calendar as CalendarIcon, Image as ImageIcon, BookOpen, Clock, Flag, Users } from "@lucide/vue";
+import { Info, BarChart3, Search, Calendar as CalendarIcon, Image as ImageIcon, BookOpen, Clock, Flag, Users, ClipboardCheck } from "@lucide/vue";
 import { ref, computed } from "vue";
 
 const props = defineProps<{
     data: any[];
+    pegawai_data?: any[];
     available_years: (string|number)[];
     filters: {
         month: string;
@@ -48,7 +49,14 @@ const filteredData = computed(() => {
     return props.data.filter(u => u.name.toLowerCase().includes(q));
 });
 
-// Ringkasan Akumulasi Total
+const filteredPegawaiData = computed(() => {
+    const list = props.pegawai_data || [];
+    if (!searchQuery.value) return list;
+    const q = searchQuery.value.toLowerCase();
+    return list.filter((p: any) => p.name.toLowerCase().includes(q));
+});
+
+// Ringkasan Akumulasi Total Guru
 const summaryTotals = computed(() => {
     const list = filteredData.value;
     return {
@@ -58,6 +66,12 @@ const summaryTotals = computed(() => {
             izin: list.reduce((acc, u) => acc + (u.kelas?.izin || 0), 0),
             sakit: list.reduce((acc, u) => acc + (u.kelas?.sakit || 0), 0),
             alpha: list.reduce((acc, u) => acc + (u.kelas?.alpha || 0), 0),
+        },
+        piket: {
+            hadir: list.reduce((acc, u) => acc + (u.piket?.hadir || 0), 0),
+            izin: list.reduce((acc, u) => acc + (u.piket?.izin || 0), 0),
+            sakit: list.reduce((acc, u) => acc + (u.piket?.sakit || 0), 0),
+            alpha: list.reduce((acc, u) => acc + (u.piket?.alpha || 0), 0),
         },
         gms: {
             hadir: list.reduce((acc, u) => acc + (u.gms?.hadir || 0), 0),
@@ -70,6 +84,20 @@ const summaryTotals = computed(() => {
             izin: list.reduce((acc, u) => acc + (u.upacara?.izin || 0), 0),
             sakit: list.reduce((acc, u) => acc + (u.upacara?.sakit || 0), 0),
             alpha: list.reduce((acc, u) => acc + (u.upacara?.alpha || 0), 0),
+        }
+    };
+});
+
+// Ringkasan Akumulasi Pegawai Administrasi
+const summaryPegawai = computed(() => {
+    const list = filteredPegawaiData.value;
+    return {
+        totalPegawai: list.length,
+        upacara: {
+            hadir: list.reduce((acc: number, p: any) => acc + (p.upacara?.hadir || 0), 0),
+            izin: list.reduce((acc: number, p: any) => acc + (p.upacara?.izin || 0), 0),
+            sakit: list.reduce((acc: number, p: any) => acc + (p.upacara?.sakit || 0), 0),
+            alpha: list.reduce((acc: number, p: any) => acc + (p.upacara?.alpha || 0), 0),
         }
     };
 });
@@ -142,17 +170,21 @@ const getStatusBadgeClass = (status: string) => {
             </div>
         </div>
 
-        <!-- Metric Summary Cards (2 cols on mobile, 4 on lg) -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4">
-            <!-- Total Guru -->
+        <!-- Metric Summary Cards (2 cols on mobile, 5 on lg) -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 md:gap-4">
+            <!-- Total Guru & Pegawai -->
             <Card class="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs">
                 <CardContent class="p-3 md:p-4 flex items-center gap-2.5 md:gap-3.5">
                     <div class="w-9 h-9 md:w-11 md:h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center shrink-0">
                         <Users class="w-4 h-4 md:w-5 md:h-5" />
                     </div>
                     <div class="min-w-0">
-                        <p class="text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">Total Guru</p>
-                        <p class="text-base md:text-xl font-bold text-slate-900 dark:text-white mt-0.5">{{ summaryTotals.totalGuru }} Org</p>
+                        <p class="text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400 truncate">Total Pengguna</p>
+                        <p class="text-xs md:text-sm font-bold text-slate-900 dark:text-white mt-0.5 leading-tight">
+                            {{ summaryTotals.totalGuru }} <span class="text-[11px] font-normal text-slate-500">Guru</span>
+                            <span class="text-[11px] font-normal text-slate-400 mx-1">•</span>
+                            {{ summaryPegawai.totalPegawai }} <span class="text-[11px] font-normal text-slate-500">Pegawai</span>
+                        </p>
                     </div>
                 </CardContent>
             </Card>
@@ -170,6 +202,23 @@ const getStatusBadgeClass = (status: string) => {
                         <span class="text-blue-700 dark:text-blue-400">I: {{ summaryTotals.kelas.izin }}</span>
                         <span class="text-amber-700 dark:text-amber-400">S: {{ summaryTotals.kelas.sakit }}</span>
                         <span class="text-rose-700 dark:text-rose-400">A: {{ summaryTotals.kelas.alpha }}</span>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <!-- Tugas Guru Piket -->
+            <Card class="border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 shadow-xs">
+                <CardContent class="p-3 md:p-4">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[11px] md:text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1 truncate">
+                            <ClipboardCheck class="w-3.5 h-3.5 text-amber-600 shrink-0" /> Tugas Piket
+                        </span>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] md:text-xs font-bold pt-0.5">
+                        <span class="text-emerald-700 dark:text-emerald-400">H: {{ summaryTotals.piket.hadir }}</span>
+                        <span class="text-blue-700 dark:text-blue-400">I: {{ summaryTotals.piket.izin }}</span>
+                        <span class="text-amber-700 dark:text-amber-400">S: {{ summaryTotals.piket.sakit }}</span>
+                        <span class="text-rose-700 dark:text-rose-400">A: {{ summaryTotals.piket.alpha }}</span>
                     </div>
                 </CardContent>
             </Card>
@@ -264,7 +313,15 @@ const getStatusBadgeClass = (status: string) => {
                                     </div>
                                 </th>
 
-                                <!-- Kolom Group 2: Absensi GMS -->
+                                <!-- Kolom Group 2: Tugas Guru Piket -->
+                                <th scope="col" colspan="4" class="px-2 py-1.5 text-center bg-amber-50/90 dark:bg-amber-950/50 text-amber-900 dark:text-amber-200 border-r-2 border-slate-300 dark:border-slate-700 font-bold text-xs">
+                                    <div class="flex items-center justify-center gap-1.5">
+                                        <ClipboardCheck class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                        <span>Tugas Piket</span>
+                                    </div>
+                                </th>
+
+                                <!-- Kolom Group 3: Absensi GMS -->
                                 <th scope="col" colspan="4" class="px-2 py-1.5 text-center bg-indigo-50/90 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 border-r-2 border-slate-300 dark:border-slate-700 font-bold text-xs">
                                     <div class="flex items-center justify-center gap-1.5">
                                         <Clock class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -272,7 +329,7 @@ const getStatusBadgeClass = (status: string) => {
                                     </div>
                                 </th>
 
-                                <!-- Kolom Group 3: Absensi Upacara -->
+                                <!-- Kolom Group 4: Absensi Upacara -->
                                 <th scope="col" colspan="4" class="px-2 py-1.5 text-center bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 font-bold text-xs">
                                     <div class="flex items-center justify-center gap-1.5">
                                         <Flag class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -288,6 +345,12 @@ const getStatusBadgeClass = (status: string) => {
                                 <th class="px-1 py-1.5 text-center text-blue-700 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Izin">I</th>
                                 <th class="px-1 py-1.5 text-center text-amber-700 dark:text-amber-400 bg-blue-50/50 dark:bg-blue-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Sakit">S</th>
                                 <th class="px-1 py-1.5 text-center text-rose-700 dark:text-rose-400 bg-blue-50/50 dark:bg-blue-950/30 border-r-2 border-slate-300 dark:border-slate-700 w-8" title="Alpha">A</th>
+
+                                <!-- Tugas Guru Piket -->
+                                <th class="px-1 py-1.5 text-center text-emerald-700 dark:text-emerald-400 bg-amber-50/50 dark:bg-amber-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Hadir">H</th>
+                                <th class="px-1 py-1.5 text-center text-blue-700 dark:text-blue-400 bg-amber-50/50 dark:bg-amber-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Izin">I</th>
+                                <th class="px-1 py-1.5 text-center text-amber-700 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Sakit">S</th>
+                                <th class="px-1 py-1.5 text-center text-rose-700 dark:text-rose-400 bg-amber-50/50 dark:bg-amber-950/30 border-r-2 border-slate-300 dark:border-slate-700 w-8" title="Alpha">A</th>
 
                                 <!-- Absensi GMS -->
                                 <th class="px-1 py-1.5 text-center text-emerald-700 dark:text-emerald-400 bg-indigo-50/50 dark:bg-indigo-950/30 border-r border-slate-200 dark:border-slate-800 w-8" title="Hadir">H</th>
@@ -356,6 +419,47 @@ const getStatusBadgeClass = (status: string) => {
                                     @click="user.kelas.total > 0 && openModal(user.name, 'Kehadiran di Kelas (Pantauan Piket)', 'kelas', user.kelas.detail)"
                                 >
                                     <span v-if="user.kelas.alpha > 0" class="inline-block px-1 py-0.2 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-[11px] font-black">{{ user.kelas.alpha }}</span>
+                                    <span v-else>0</span>
+                                </td>
+
+                                <!-- 2. Tugas Guru Piket (H, I, S, A) -->
+                                <!-- H -->
+                                <td 
+                                    class="px-1 py-2 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="user.piket.hadir > 0 ? 'text-emerald-700 dark:text-emerald-400 cursor-pointer hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="user.piket.total > 0 ? 'Klik untuk melihat rincian tugas piket' : ''"
+                                    @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                >
+                                    {{ user.piket.hadir }}
+                                </td>
+                                <!-- I -->
+                                <td 
+                                    class="px-1 py-2 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="user.piket.izin > 0 ? 'text-blue-700 dark:text-blue-400 cursor-pointer hover:bg-blue-50/80 dark:hover:bg-blue-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="user.piket.total > 0 ? 'Klik untuk melihat rincian tugas piket' : ''"
+                                    @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                >
+                                    <span v-if="user.piket.izin > 0" class="inline-block px-1 py-0.2 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px]">{{ user.piket.izin }}</span>
+                                    <span v-else>0</span>
+                                </td>
+                                <!-- S -->
+                                <td 
+                                    class="px-1 py-2 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="user.piket.sakit > 0 ? 'text-amber-700 dark:text-amber-400 cursor-pointer hover:bg-amber-50/80 dark:hover:bg-amber-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="user.piket.total > 0 ? 'Klik untuk melihat rincian tugas piket' : ''"
+                                    @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                >
+                                    <span v-if="user.piket.sakit > 0" class="inline-block px-1 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[11px]">{{ user.piket.sakit }}</span>
+                                    <span v-else>0</span>
+                                </td>
+                                <!-- A -->
+                                <td 
+                                    class="px-1 py-2 text-center font-bold border-r-2 border-slate-300 dark:border-slate-700 text-xs"
+                                    :class="user.piket.alpha > 0 ? 'text-rose-700 dark:text-rose-400 cursor-pointer hover:bg-rose-50/80 dark:hover:bg-rose-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="user.piket.total > 0 ? 'Klik untuk melihat rincian tugas piket' : ''"
+                                    @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                >
+                                    <span v-if="user.piket.alpha > 0" class="inline-block px-1 py-0.2 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-[11px] font-black">{{ user.piket.alpha }}</span>
                                     <span v-else>0</span>
                                 </td>
 
@@ -443,7 +547,7 @@ const getStatusBadgeClass = (status: string) => {
                             </tr>
                             
                             <tr v-if="filteredData.length === 0">
-                                <td colspan="15" class="px-6 py-12 text-center text-slate-500">
+                                <td colspan="19" class="px-6 py-12 text-center text-slate-500">
                                     Tidak ada data guru yang cocok dengan pencarian.
                                 </td>
                             </tr>
@@ -460,6 +564,12 @@ const getStatusBadgeClass = (status: string) => {
                                 <td class="px-1 py-2 text-center text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.kelas.izin }}</td>
                                 <td class="px-1 py-2 text-center text-amber-700 dark:text-amber-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.kelas.sakit }}</td>
                                 <td class="px-1 py-2 text-center text-rose-700 dark:text-rose-400 border-r-2 border-slate-300 dark:border-slate-700 text-xs">{{ summaryTotals.kelas.alpha }}</td>
+
+                                <!-- Piket H, I, S, A -->
+                                <td class="px-1 py-2 text-center text-emerald-700 dark:text-emerald-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.piket.hadir }}</td>
+                                <td class="px-1 py-2 text-center text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.piket.izin }}</td>
+                                <td class="px-1 py-2 text-center text-amber-700 dark:text-amber-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.piket.sakit }}</td>
+                                <td class="px-1 py-2 text-center text-rose-700 dark:text-rose-400 border-r-2 border-slate-300 dark:border-slate-700 text-xs">{{ summaryTotals.piket.alpha }}</td>
 
                                 <!-- GMS H, I, S, A -->
                                 <td class="px-1 py-2 text-center text-emerald-700 dark:text-emerald-400 border-r border-slate-200 dark:border-slate-800 text-xs">{{ summaryTotals.gms.hadir }}</td>
@@ -540,7 +650,44 @@ const getStatusBadgeClass = (status: string) => {
                                 </div>
                             </div>
 
-                            <!-- 2. GMS -->
+                            <!-- 2. Piket -->
+                            <div class="p-2.5 rounded-lg bg-amber-50/40 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 flex items-center justify-between gap-2">
+                                <span class="font-semibold text-amber-900 dark:text-amber-300 flex items-center gap-1.5 shrink-0 text-xs">
+                                    <ClipboardCheck class="w-3.5 h-3.5 text-amber-600" /> Piket:
+                                </span>
+                                <div class="flex items-center gap-1">
+                                    <button 
+                                        @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                        class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                        :class="user.piket.hadir > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                    >
+                                        H: {{ user.piket.hadir }}
+                                    </button>
+                                    <button 
+                                        @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                        class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                        :class="user.piket.izin > 0 ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                    >
+                                        I: {{ user.piket.izin }}
+                                    </button>
+                                    <button 
+                                        @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                        class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                        :class="user.piket.sakit > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                    >
+                                        S: {{ user.piket.sakit }}
+                                    </button>
+                                    <button 
+                                        @click="user.piket.total > 0 && openModal(user.name, 'Tugas Guru Piket', 'piket', user.piket.detail)"
+                                        class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                        :class="user.piket.alpha > 0 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 cursor-pointer font-black' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                    >
+                                        A: {{ user.piket.alpha }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 3. GMS -->
                             <div class="p-2.5 rounded-lg bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between gap-2">
                                 <span class="font-semibold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5 shrink-0 text-xs">
                                     <Clock class="w-3.5 h-3.5 text-indigo-600" /> GMS:
@@ -623,6 +770,230 @@ const getStatusBadgeClass = (status: string) => {
             </CardContent>
         </Card>
 
+        <!-- TABEL 2: REKAPITULASI KEHADIRAN PEGAWAI ADMINISTRASI (KHUSUS ABSENSI UPACARA) -->
+        <Card class="shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden">
+            <CardHeader class="p-3.5 md:p-6 pb-3 md:pb-4 border-b dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <div class="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                                <Flag class="w-4 h-4" />
+                            </div>
+                            <CardTitle class="text-base md:text-lg">Tabel Rekapitulasi Kehadiran Pegawai Administrasi</CardTitle>
+                        </div>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            Rekapitulasi data kehadiran upacara bendera khusus pegawai tata usaha / administrasi pada periode ini.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            {{ filteredPegawaiData.length }} Pegawai Administrasi
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Legend -->
+                <div class="mt-3 pt-2.5 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 md:gap-4 text-xs text-slate-600 dark:text-slate-400">
+                    <span class="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider text-[10px] md:text-[11px]">Keterangan:</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> <strong class="text-emerald-700 dark:text-emerald-400">H</strong> = Hadir</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-blue-500"></span> <strong class="text-blue-700 dark:text-blue-400">I</strong> = Izin</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span> <strong class="text-amber-700 dark:text-amber-400">S</strong> = Sakit</span>
+                    <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span> <strong class="text-rose-700 dark:text-rose-400">A</strong> = Alpha</span>
+                </div>
+            </CardHeader>
+
+            <CardContent class="p-0">
+                <!-- Desktop Table View -->
+                <div class="hidden md:block overflow-x-auto">
+                    <table class="w-full text-xs text-left border-collapse">
+                        <thead class="text-xs text-slate-700 uppercase bg-slate-100/90 dark:bg-slate-900/90 dark:text-slate-300">
+                            <!-- Row 1: Main Headers -->
+                            <tr class="border-b dark:border-slate-800">
+                                <th scope="col" rowspan="2" class="px-3 py-2 text-center w-12 border-r dark:border-slate-800 font-bold text-[11px]">No</th>
+                                <th scope="col" rowspan="2" class="px-4 py-2 border-r dark:border-slate-800 font-bold text-xs min-w-[220px]">Nama Pegawai</th>
+                                <th scope="col" rowspan="2" class="px-3 py-2 text-center border-r dark:border-slate-800 font-bold text-[11px] w-48">Jabatan / Status</th>
+                                
+                                <!-- Kolom Upacara Group -->
+                                <th scope="col" colspan="4" class="px-3 py-1.5 text-center bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200 border-r dark:border-slate-800 font-bold text-xs">
+                                    <div class="flex items-center justify-center gap-1.5">
+                                        <Flag class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                        <span>Absensi Upacara</span>
+                                    </div>
+                                </th>
+                                <th scope="col" rowspan="2" class="px-3 py-2 text-center font-bold text-[11px] w-28">Total Data</th>
+                            </tr>
+
+                            <!-- Row 2: Sub-headers H, I, S, A -->
+                            <tr class="border-b dark:border-slate-800 text-[11px] font-black">
+                                <th class="px-2 py-1.5 text-center text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/30 border-r border-slate-200 dark:border-slate-800 w-16" title="Hadir">H</th>
+                                <th class="px-2 py-1.5 text-center text-blue-700 dark:text-blue-400 bg-emerald-50/50 dark:bg-emerald-950/30 border-r border-slate-200 dark:border-slate-800 w-16" title="Izin">I</th>
+                                <th class="px-2 py-1.5 text-center text-amber-700 dark:text-amber-400 bg-emerald-50/50 dark:bg-emerald-950/30 border-r border-slate-200 dark:border-slate-800 w-16" title="Sakit">S</th>
+                                <th class="px-2 py-1.5 text-center text-rose-700 dark:text-rose-400 bg-emerald-50/50 dark:bg-emerald-950/30 border-r dark:border-slate-800 w-16" title="Alpha">A</th>
+                            </tr>
+                        </thead>
+
+                        <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                            <tr v-for="(pegawai, index) in filteredPegawaiData" :key="'pegawai-' + pegawai.id" class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                                <td class="px-3 py-2.5 text-center text-slate-500 border-r dark:border-slate-800 font-medium text-xs">
+                                    {{ index + 1 }}
+                                </td>
+                                <td class="px-4 py-2.5 font-semibold text-slate-900 dark:text-slate-100 border-r dark:border-slate-800 text-xs md:text-sm">
+                                    {{ pegawai.name }}
+                                </td>
+                                <td class="px-3 py-2.5 text-center border-r dark:border-slate-800">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                        {{ pegawai.jabatan }}
+                                    </span>
+                                </td>
+
+                                <!-- Upacara H -->
+                                <td 
+                                    class="px-2 py-2.5 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="pegawai.upacara.hadir > 0 ? 'text-emerald-700 dark:text-emerald-400 cursor-pointer hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="pegawai.upacara.total > 0 ? 'Klik untuk melihat rincian riwayat Upacara' : ''"
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                >
+                                    <span v-if="pegawai.upacara.hadir > 0" class="inline-block px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[11px] font-black">{{ pegawai.upacara.hadir }}</span>
+                                    <span v-else>0</span>
+                                </td>
+
+                                <!-- Upacara I -->
+                                <td 
+                                    class="px-2 py-2.5 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="pegawai.upacara.izin > 0 ? 'text-blue-700 dark:text-blue-400 cursor-pointer hover:bg-blue-50/80 dark:hover:bg-blue-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="pegawai.upacara.total > 0 ? 'Klik untuk melihat rincian riwayat Upacara' : ''"
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                >
+                                    <span v-if="pegawai.upacara.izin > 0" class="inline-block px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[11px] font-black">{{ pegawai.upacara.izin }}</span>
+                                    <span v-else>0</span>
+                                </td>
+
+                                <!-- Upacara S -->
+                                <td 
+                                    class="px-2 py-2.5 text-center font-bold border-r border-slate-200 dark:border-slate-800 text-xs"
+                                    :class="pegawai.upacara.sakit > 0 ? 'text-amber-700 dark:text-amber-400 cursor-pointer hover:bg-amber-50/80 dark:hover:bg-amber-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="pegawai.upacara.total > 0 ? 'Klik untuk melihat rincian riwayat Upacara' : ''"
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                >
+                                    <span v-if="pegawai.upacara.sakit > 0" class="inline-block px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-[11px] font-black">{{ pegawai.upacara.sakit }}</span>
+                                    <span v-else>0</span>
+                                </td>
+
+                                <!-- Upacara A -->
+                                <td 
+                                    class="px-2 py-2.5 text-center font-bold border-r dark:border-slate-800 text-xs"
+                                    :class="pegawai.upacara.alpha > 0 ? 'text-rose-700 dark:text-rose-400 cursor-pointer hover:bg-rose-50/80 dark:hover:bg-rose-950/40' : 'text-slate-300 dark:text-slate-600'"
+                                    :title="pegawai.upacara.total > 0 ? 'Klik untuk melihat rincian riwayat Upacara' : ''"
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                >
+                                    <span v-if="pegawai.upacara.alpha > 0" class="inline-block px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-[11px] font-black">{{ pegawai.upacara.alpha }}</span>
+                                    <span v-else>0</span>
+                                </td>
+
+                                <!-- Total -->
+                                <td class="px-3 py-2.5 text-center font-bold text-xs text-slate-700 dark:text-slate-300">
+                                    {{ pegawai.upacara.total }}
+                                </td>
+                            </tr>
+
+                            <tr v-if="filteredPegawaiData.length === 0">
+                                <td colspan="8" class="px-6 py-10 text-center text-slate-500">
+                                    Tidak ada data pegawai administrasi yang cocok dengan pencarian.
+                                </td>
+                            </tr>
+                        </tbody>
+
+                        <!-- Footer Total Akumulasi -->
+                        <tfoot v-if="filteredPegawaiData.length > 0" class="bg-slate-100/90 dark:bg-slate-900 font-extrabold text-xs text-slate-800 dark:text-slate-200 border-t-2 border-slate-300 dark:border-slate-700">
+                            <tr>
+                                <td colspan="3" class="px-4 py-2.5 text-right uppercase tracking-wider font-extrabold border-r dark:border-slate-800 text-xs">
+                                    Total Akumulasi Pegawai:
+                                </td>
+                                <td class="px-2 py-2.5 text-center text-emerald-700 dark:text-emerald-400 border-r border-slate-200 dark:border-slate-800 text-xs">
+                                    {{ summaryPegawai.upacara.hadir }}
+                                </td>
+                                <td class="px-2 py-2.5 text-center text-blue-700 dark:text-blue-400 border-r border-slate-200 dark:border-slate-800 text-xs">
+                                    {{ summaryPegawai.upacara.izin }}
+                                </td>
+                                <td class="px-2 py-2.5 text-center text-amber-700 dark:text-amber-400 border-r border-slate-200 dark:border-slate-800 text-xs">
+                                    {{ summaryPegawai.upacara.sakit }}
+                                </td>
+                                <td class="px-2 py-2.5 text-center text-rose-700 dark:text-rose-400 border-r dark:border-slate-800 text-xs">
+                                    {{ summaryPegawai.upacara.alpha }}
+                                </td>
+                                <td class="px-3 py-2.5 text-center text-slate-800 dark:text-slate-200 text-xs font-bold">
+                                    {{ summaryPegawai.upacara.hadir + summaryPegawai.upacara.izin + summaryPegawai.upacara.sakit + summaryPegawai.upacara.alpha }}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Mobile Card View for Pegawai Administrasi -->
+                <div class="block md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+                    <div 
+                        v-for="(pegawai, index) in filteredPegawaiData" 
+                        :key="'mob-pegawai-' + pegawai.id" 
+                        class="p-3.5 space-y-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {{ index + 1 }}
+                                </span>
+                                <h3 class="font-bold text-sm text-slate-900 dark:text-white truncate">
+                                    {{ pegawai.name }}
+                                </h3>
+                            </div>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 shrink-0">
+                                {{ pegawai.jabatan }}
+                            </span>
+                        </div>
+
+                        <div class="p-2.5 rounded-lg bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 flex items-center justify-between gap-2 text-xs">
+                            <span class="font-semibold text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 shrink-0">
+                                <Flag class="w-3.5 h-3.5 text-emerald-600" /> Upacara:
+                            </span>
+                            <div class="flex items-center gap-1">
+                                <button 
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                    class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                    :class="pegawai.upacara.hadir > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                >
+                                    H: {{ pegawai.upacara.hadir }}
+                                </button>
+                                <button 
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                    class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                    :class="pegawai.upacara.izin > 0 ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                >
+                                    I: {{ pegawai.upacara.izin }}
+                                </button>
+                                <button 
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                    class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                    :class="pegawai.upacara.sakit > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 cursor-pointer' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                >
+                                    S: {{ pegawai.upacara.sakit }}
+                                </button>
+                                <button 
+                                    @click="pegawai.upacara.total > 0 && openModal(pegawai.name, 'Absensi Upacara', 'upacara', pegawai.upacara.detail)"
+                                    class="px-2 py-1 rounded text-center font-bold min-w-[28px] transition-transform active:scale-95"
+                                    :class="pegawai.upacara.alpha > 0 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 cursor-pointer font-black' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'"
+                                >
+                                    A: {{ pegawai.upacara.alpha }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="filteredPegawaiData.length === 0" class="p-6 text-center text-sm text-slate-500 italic">
+                        Tidak ada data pegawai administrasi yang cocok dengan pencarian.
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
         <!-- Detail Modal -->
         <Dialog v-model:open="isModalOpen">
             <DialogContent class="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
@@ -670,6 +1041,22 @@ const getStatusBadgeClass = (status: string) => {
                             <div>
                                 <span class="text-muted-foreground block text-[10px] uppercase font-bold">Mata Pelajaran:</span>
                                 <span class="font-semibold text-slate-800 dark:text-slate-200">{{ item.mapel }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Informasi Khusus Tugas Guru Piket (Titik, Jam, Jumlah Laporan) -->
+                        <div v-if="modalType === 'piket'" class="text-xs text-slate-600 dark:text-slate-400 grid grid-cols-2 gap-2 bg-white dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <span class="text-muted-foreground block text-[10px] uppercase font-bold">Titik / Pos Piket:</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200">{{ item.titik }}</span>
+                            </div>
+                            <div>
+                                <span class="text-muted-foreground block text-[10px] uppercase font-bold">Laporan Terkirim:</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200">{{ item.jumlah_laporan }} Kelas</span>
+                            </div>
+                            <div class="col-span-2">
+                                <span class="text-muted-foreground block text-[10px] uppercase font-bold">Jam Piket:</span>
+                                <span class="font-medium text-slate-700 dark:text-slate-300">{{ item.jam }}</span>
                             </div>
                         </div>
 

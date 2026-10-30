@@ -17,7 +17,7 @@ import {
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
 
-import { Users, GraduationCap, School, MapPin, Clock, Calendar, ClipboardCheck, Briefcase, Camera, Settings, Activity, ShieldCheck, Folder, Award, CheckCircle2, AlertTriangle, Smartphone } from '@lucide/vue';
+import { Users, UserCheck, GraduationCap, School, MapPin, Clock, Calendar, ClipboardCheck, Briefcase, Camera, Settings, Activity, ShieldCheck, Folder, Award, CheckCircle2, AlertTriangle, Smartphone } from '@lucide/vue';
 import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { usePwaInstall } from '@/composables/usePwaInstall';
@@ -71,7 +71,10 @@ const harianItems = computed<NavItem[]>(() => {
 const masterDataItems = computed<NavItem[]>(() => {
     const items: NavItem[] = [];
     if (['admin', 'super admin'].includes(page.props.auth?.user?.role)) {
-        items.push({ title: 'Users', href: '/users' as any, icon: Users });
+        items.push(
+            { title: 'Users', href: '/users' as any, icon: Users },
+            { title: 'Pegawai Administrasi', href: '/pegawai-administrasi' as any, icon: UserCheck }
+        );
         if (page.props.auth?.user?.role === 'super admin') {
             items.push({ title: 'Tipe Guru', href: '/tipe-guru' as any, icon: Briefcase });
         }

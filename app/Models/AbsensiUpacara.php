@@ -12,6 +12,7 @@ class AbsensiUpacara extends Model
     protected $fillable = [
         'tanggal',
         'user_id',
+        'pegawai_administrasi_id',
         'is_hadir',
         'status',
         'keterangan',
@@ -25,5 +26,10 @@ class AbsensiUpacara extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function pegawaiAdministrasi()
+    {
+        return $this->belongsTo(PegawaiAdministrasi::class);
     }
 }

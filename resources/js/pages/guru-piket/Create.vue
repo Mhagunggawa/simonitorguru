@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
-import { Camera, RefreshCcw, CheckCircle } from '@lucide/vue';
+import { Camera, RefreshCcw, CheckCircle, Lock, ShieldCheck } from '@lucide/vue';
 import { ref, onBeforeUnmount, onMounted } from 'vue';
 import Swal from 'sweetalert2';
 import { compressCanvasToTargetSize } from '@/lib/imageCompressor';
@@ -25,6 +25,8 @@ const props = defineProps<{
     totalClasses: number;
     currentJam: { id: number; urutan_jam: number; waktu_mulai: string; waktu_selesai: string };
     isTerlambat: boolean;
+    existingPhotoUrl?: string | null;
+    existingPhotoNote?: string | null;
 }>();
 
 onMounted(() => {
@@ -186,7 +188,7 @@ const submit = () => {
         return;
     }
 
-    if (!props.isTerlambat && !form.foto_dokumentasi) {
+    if (!props.isTerlambat && !props.existingPhotoUrl && !form.foto_dokumentasi) {
         Swal.fire({
             icon: 'warning',
             title: 'Foto Dokumentasi Wajib',
@@ -302,7 +304,39 @@ const submit = () => {
                         <InputError :message="form.errors.status_kehadiran" />
                     </div>
 
-                    <div class="space-y-2" v-if="!isTerlambat">
+                    <!-- Existing Photo from previous class report (Locked 1x photo) -->
+                    <div class="space-y-3" v-if="existingPhotoUrl">
+                        <Label>Foto Bukti Dokumentasi</Label>
+                        <div class="p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200 rounded-xl border border-blue-200 dark:border-blue-800/60 flex items-start gap-3 shadow-xs">
+                            <ShieldCheck class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                            <div class="text-sm">
+                                <div class="font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-1.5">
+                                    <Lock class="w-4 h-4 text-blue-600 dark:text-blue-400 inline" />
+                                    Foto Dokumentasi 
+                                </div>
+                                <p class="text-xs text-blue-700 dark:text-blue-300 mt-0.5 leading-relaxed">
+                                    Foto dokumentasi di ambil dari pelaporan pertama di jadwal mapel anda pada hari ini.
+                                </p>
+                                <p v-if="existingPhotoNote" class="text-xs font-medium text-blue-800 dark:text-blue-200 mt-1.5 flex items-center gap-1 bg-blue-100/70 dark:bg-blue-900/50 px-2 py-0.5 rounded w-fit">
+                                    {{ existingPhotoNote }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="border border-border/80 rounded-xl p-3 bg-muted/20 relative overflow-hidden flex flex-col items-center">
+                            <img 
+                                :src="existingPhotoUrl" 
+                                alt="Foto Dokumentasi Sebelumnya" 
+                                class="w-full max-h-[380px] object-contain rounded-lg shadow-sm"
+                            />
+                            <div class="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                                <CheckCircle class="w-3.5 h-3.5" /> Foto Dokumentasi Aktif
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- First report camera capture (on time) -->
+                    <div class="space-y-2" v-else-if="!isTerlambat">
                         <Label>Foto Bukti Dokumentasi</Label>
                         <div class="border-2 border-dashed border-border rounded-xl p-4 flex flex-col items-center justify-center bg-muted/20 relative overflow-hidden" :class="{'h-64': !photoUrl && !isCameraActive}">
                             
@@ -353,6 +387,7 @@ const submit = () => {
                         <InputError :message="form.errors.foto_dokumentasi" />
                     </div>
 
+                    <!-- Late report mode -->
                     <div v-else class="space-y-2">
                         <div class="p-4 bg-yellow-50 text-yellow-800 rounded-lg border border-yellow-200">
                             <strong>Mode Terlambat:</strong> Anda tidak diwajibkan mengunggah foto dokumentasi karena pelaporan ini merupakan laporan susulan yang diizinkan oleh Wakasek.
@@ -374,7 +409,7 @@ const submit = () => {
                 <div class="flex justify-end gap-4 border-t border-border pt-4 mt-8">
                     <Button 
                         type="submit" 
-                        :disabled="form.processing || (!isTerlambat && !form.foto_dokumentasi)" 
+                        :disabled="form.processing || (!isTerlambat && !existingPhotoUrl && !form.foto_dokumentasi)" 
                         class="w-full sm:w-auto px-8 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2"
                     >
                         <CheckCircle class="w-4 h-4" v-if="!form.processing" />

@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Models\RekapKehadiran;
 use App\Models\AbsensiGms;
 use App\Models\AbsensiUpacara;
+use App\Models\JadwalPiket;
+use App\Models\PegawaiAdministrasi;
 use Carbon\Carbon;
 
 class LaporanKinerjaPeriodikController extends Controller
@@ -40,17 +42,29 @@ class LaporanKinerjaPeriodikController extends Controller
             ->with(['jadwalPiket', 'jadwalMapel.kelas', 'jadwalMapel.mataPelajaran'])
             ->get();
             
-        // 2. Absensi GMS
+        // 2. Tugas Guru Piket (Jadwal piket guru bersangkutan)
+        $piketDataRaw = JadwalPiket::whereMonth('tanggal_piket', $month)
+            ->whereYear('tanggal_piket', $year)
+            ->with([
+                'titik',
+                'jamPelajarans',
+                'rekapKehadirans' => function($q) {
+                    $q->with(['jadwalMapel.kelas', 'jadwalMapel.mataPelajaran']);
+                }
+            ])
+            ->get();
+
+        // 3. Absensi GMS
         $gmsDataRaw = AbsensiGms::whereMonth('tanggal', $month)
             ->whereYear('tanggal', $year)
             ->get();
             
-        // 3. Absensi Upacara
+        // 4. Absensi Upacara
         $upacaraDataRaw = AbsensiUpacara::whereMonth('tanggal', $month)
             ->whereYear('tanggal', $year)
             ->get();
             
-        $data = $users->map(function ($user) use ($rekapKelasRaw, $gmsDataRaw, $upacaraDataRaw) {
+        $data = $users->map(function ($user) use ($rekapKelasRaw, $piketDataRaw, $gmsDataRaw, $upacaraDataRaw) {
             // --- 1. Kehadiran di Kelas (Pantauan Piket) ---
             $userKelasRecords = $rekapKelasRaw->filter(function($r) use ($user) {
                 return $r->jadwalMapel && $r->jadwalMapel->guru_id == $user->id;
@@ -73,6 +87,77 @@ class LaporanKinerjaPeriodikController extends Controller
                     'foto' => $r->foto_dokumentasi ? asset('storage/' . $r->foto_dokumentasi) : null,
                 ];
             })->sortByDesc('tanggal')->values();
+
+            // --- 2. Tugas Guru Piket ---
+            $userPiketRecords = $piketDataRaw->filter(function($jp) use ($user) {
+                return $jp->guru_piket_id == $user->id;
+            });
+
+            $piketDetails = $userPiketRecords->map(function($jp) use ($gmsDataRaw, $user) {
+                $hasReported = $jp->rekapKehadirans->count() > 0;
+                
+                // Cari batas waktu jam pelajaran piket terakhir
+                $latestJam = $jp->jamPelajarans->sortByDesc('waktu_selesai')->first();
+                $isPast = false;
+                if ($latestJam && $latestJam->waktu_selesai) {
+                    $waktuSelesai = substr($latestJam->waktu_selesai, 0, 5);
+                    if (strlen($waktuSelesai) <= 5) $waktuSelesai .= ':00';
+                    $endTime = Carbon::parse($jp->tanggal_piket . ' ' . $waktuSelesai);
+                    $isPast = Carbon::now()->greaterThan($endTime);
+                } else {
+                    $isPast = Carbon::parse($jp->tanggal_piket)->endOfDay()->isPast();
+                }
+
+                if ($jp->status === 'Izin') {
+                    $status = 'Izin';
+                    $keterangan = $jp->keterangan ?: 'Izin bertugas piket.';
+                } elseif ($jp->status === 'Sakit') {
+                    $status = 'Sakit';
+                    $keterangan = $jp->keterangan ?: 'Sakit saat jadwal piket.';
+                } elseif ($hasReported || $jp->status === 'Hadir') {
+                    $status = 'Hadir';
+                    $keterangan = "Telah mengisi laporan piket ({$jp->rekapKehadirans->count()} kelas dipantau).";
+                } elseif ($isPast || $jp->status === 'Alpha') {
+                    // Fallback cek jika ada catatan Izin/Sakit dari GMS
+                    $gmsOnDay = $gmsDataRaw->first(function($g) use ($user, $jp) {
+                        return $g->user_id == $user->id && $g->tanggal == $jp->tanggal_piket;
+                    });
+                    if ($gmsOnDay && in_array($gmsOnDay->status, ['Izin', 'Sakit'])) {
+                        $status = $gmsOnDay->status;
+                        $keterangan = "{$gmsOnDay->status} (Berdasarkan catatan GMS: " . ($gmsOnDay->keterangan ?: '-') . ")";
+                    } else {
+                        $status = 'Alpha';
+                        $keterangan = "Tidak mengisi laporan piket pada jadwal ini (Alpha).";
+                    }
+                } else {
+                    $status = 'Terjadwal';
+                    $keterangan = "Jadwal piket mendatang / sedang berlangsung.";
+                }
+
+                $jamList = $jp->jamPelajarans->map(function($j) {
+                    $mulai = substr($j->waktu_mulai, 0, 5);
+                    $selesai = substr($j->waktu_selesai, 0, 5);
+                    return "{$j->nama_jam} ({$mulai}-{$selesai})";
+                })->join(', ');
+
+                $firstFoto = $jp->rekapKehadirans->firstWhere('foto_dokumentasi')?->foto_dokumentasi;
+
+                return [
+                    'tanggal' => Carbon::parse($jp->tanggal_piket)->translatedFormat('l, d F Y'),
+                    'titik' => $jp->titik?->nama_titik ?? '-',
+                    'jam' => $jamList ?: 'Semua Jam',
+                    'status' => $status,
+                    'jumlah_laporan' => $jp->rekapKehadirans->count(),
+                    'keterangan' => $keterangan,
+                    'foto' => $firstFoto ? asset('storage/' . $firstFoto) : null,
+                ];
+            })->sortByDesc('tanggal')->values();
+
+            $piketHadir = $piketDetails->where('status', 'Hadir')->count();
+            $piketIzin = $piketDetails->where('status', 'Izin')->count();
+            $piketSakit = $piketDetails->where('status', 'Sakit')->count();
+            $piketAlpha = $piketDetails->where('status', 'Alpha')->count();
+            $piketTotal = $piketHadir + $piketIzin + $piketSakit + $piketAlpha;
 
             // --- 2. Absensi GMS ---
             $userGmsRecords = $gmsDataRaw->filter(function($r) use ($user) {
@@ -125,13 +210,13 @@ class LaporanKinerjaPeriodikController extends Controller
                     'total' => $userKelasRecords->count(),
                     'detail' => $kelasDetails
                 ],
-                'piket' => [ // alias for compatibility
-                    'hadir' => $kelasHadir,
-                    'izin' => $kelasIzin,
-                    'sakit' => $kelasSakit,
-                    'alpha' => $kelasAlpha,
-                    'total' => $userKelasRecords->count(),
-                    'detail' => $kelasDetails
+                'piket' => [
+                    'hadir' => $piketHadir,
+                    'izin' => $piketIzin,
+                    'sakit' => $piketSakit,
+                    'alpha' => $piketAlpha,
+                    'total' => $piketTotal,
+                    'detail' => $piketDetails
                 ],
                 'gms' => [
                     'hadir' => $gmsHadir,
@@ -152,8 +237,46 @@ class LaporanKinerjaPeriodikController extends Controller
             ];
         });
 
+        // 5. Absensi Upacara Pegawai Administrasi
+        $pegawais = PegawaiAdministrasi::orderBy('nama', 'asc')->get();
+
+        $pegawaiData = $pegawais->map(function ($pegawai) use ($upacaraDataRaw) {
+            $pegawaiUpacaraRecords = $upacaraDataRaw->filter(function($r) use ($pegawai) {
+                return $r->pegawai_administrasi_id == $pegawai->id;
+            });
+
+            $upacaraHadir = $pegawaiUpacaraRecords->filter(fn($r) => $r->status === 'Hadir' || ($r->is_hadir && !$r->status))->count();
+            $upacaraIzin = $pegawaiUpacaraRecords->filter(fn($r) => $r->status === 'Izin')->count();
+            $upacaraSakit = $pegawaiUpacaraRecords->filter(fn($r) => $r->status === 'Sakit')->count();
+            $upacaraAlpha = $pegawaiUpacaraRecords->filter(fn($r) => $r->status === 'Alpha' || (!$r->is_hadir && !$r->status))->count();
+
+            $upacaraDetails = $pegawaiUpacaraRecords->map(function($r) {
+                $status = $r->status ?? ($r->is_hadir ? 'Hadir' : 'Alpha');
+                return [
+                    'tanggal' => Carbon::parse($r->tanggal)->translatedFormat('l, d F Y'),
+                    'status' => $status,
+                    'keterangan' => $r->keterangan,
+                ];
+            })->sortByDesc('tanggal')->values();
+
+            return [
+                'id' => $pegawai->id,
+                'name' => $pegawai->nama,
+                'jabatan' => 'Pegawai Administrasi',
+                'upacara' => [
+                    'hadir' => $upacaraHadir,
+                    'izin' => $upacaraIzin,
+                    'sakit' => $upacaraSakit,
+                    'alpha' => $upacaraAlpha,
+                    'total' => $pegawaiUpacaraRecords->count(),
+                    'detail' => $upacaraDetails
+                ]
+            ];
+        });
+
         return Inertia::render('LaporanKinerjaPeriodik/Index', [
             'data' => $data,
+            'pegawai_data' => $pegawaiData,
             'available_years' => array_values($availableYears),
             'filters' => [
                 'month' => $month,
