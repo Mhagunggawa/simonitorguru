@@ -258,7 +258,7 @@ const confirmDeleteSP = (sp: SPHistory | undefined, guru: EvaluasiGuru) => {
                     Tindak Lanjut Evaluasi Kedisiplinan
                 </h1>
                 <p class="text-sm text-muted-foreground mt-1">
-                    Rekapitulasi ketidakhadiran (Alpha dari presensi Piket & GMS) dan penerbitan Surat Peringatan (SP).
+                    Rekapitulasi ketidakhadiran (Alpha di kelas dari laporan Guru Piket) dan penerbitan Surat Peringatan (SP).
                 </p>
             </div>
         </div>
@@ -603,7 +603,7 @@ const confirmDeleteSP = (sp: SPHistory | undefined, guru: EvaluasiGuru) => {
                 <DialogHeader>
                     <DialogTitle>Detail Alpha: {{ selectedDetailGuru?.nama }}</DialogTitle>
                     <DialogDescription>
-                        Rincian ketidakhadiran (Alpha) dari laporan presensi GMS maupun Piket.
+                        Rincian ketidakhadiran (Alpha) mengajar di kelas yang dilaporkan oleh guru piket.
                     </DialogDescription>
                 </DialogHeader>
 

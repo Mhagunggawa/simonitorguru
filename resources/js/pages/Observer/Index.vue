@@ -60,9 +60,11 @@ const searchAssign = ref('');
 
 const filteredAssignTeachers = computed(() => {
     if (!selectedObserver.value) return [];
-    // Tampilkan guru-guru yang belum jadi observer (atau biarkan semua, opsional)
-    // dan bukan dirinya sendiri
-    let list = props.teachers.filter(t => !t.is_observer && t.id !== selectedObserver.value?.id);
+    // Guru yang dapat diamati:
+    // - Bukan kepsek (role kepsek tidak boleh diamati oleh observer)
+    // - Bukan dirinya sendiri (observer tidak bisa mengamati diri sendiri)
+    // - Guru yang menjadi observer tetap dapat diamati oleh observer lain
+    let list = props.teachers.filter(t => t.role !== 'kepsek' && t.id !== selectedObserver.value?.id);
     if (searchAssign.value) {
         list = list.filter(t => t.name.toLowerCase().includes(searchAssign.value.toLowerCase()));
     }
@@ -176,6 +178,9 @@ const saveAssignments = () => {
                                     <div>
                                         <h3 class="font-bold text-base text-emerald-700 dark:text-emerald-400">{{ observer.name }}</h3>
                                         <p class="text-xs text-muted-foreground mt-1">Mengamati: <span class="font-semibold text-foreground">{{ props.teachers.filter(t => t.observer_id === observer.id).length }}</span> Guru</p>
+                                        <p v-if="observer.observer_id" class="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                                            Diobservasi oleh: <span class="font-medium text-foreground">{{ props.teachers.find(t => t.id === observer.observer_id)?.name || 'Observer lain' }}</span>
+                                        </p>
                                     </div>
                                     <Button size="sm" variant="outline" class="h-8 gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800" @click="openAssignDialog(observer)">
                                         <UserPlus class="w-3.5 h-3.5" />
@@ -231,8 +236,12 @@ const saveAssignments = () => {
                                 class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 dark:border-gray-600 dark:bg-gray-700"
                             />
                             <div class="flex-1 min-w-0">
-                                <p class="text-sm font-medium leading-none">{{ teacher.name }}</p>
-                                <p v-if="teacher.observer_id && teacher.observer_id !== selectedObserver?.id" class="text-[10px] text-amber-600 mt-1">Saat ini diobservasi oleh guru lain</p>
+                                <div class="flex items-center gap-2">
+                                    <p class="text-sm font-medium leading-none">{{ teacher.name }}</p>
+                                </div>
+                                <p v-if="teacher.observer_id && teacher.observer_id !== selectedObserver?.id" class="text-[10px] text-amber-600 mt-1">
+                                    Saat ini diobservasi oleh: <span class="font-medium">{{ props.teachers.find(t => t.id === teacher.observer_id)?.name || 'Observer lain' }}</span>
+                                </p>
                             </div>
                         </label>
                         <div v-if="filteredAssignTeachers.length === 0" class="p-4 text-center text-sm text-muted-foreground">

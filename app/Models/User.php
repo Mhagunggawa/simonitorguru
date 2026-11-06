@@ -55,7 +55,7 @@ class User extends Authenticatable implements PasskeyUser
 
     public function tipeGuru() { return $this->belongsTo(TipeGuru::class, 'tipe_guru_id'); }
     public function jadwalMapels() { return $this->hasMany(JadwalMapel::class, 'guru_id'); }
-    public function jadwalPikets() { return $this->hasMany(JadwalPiket::class, 'guru_id'); }
+    public function jadwalPikets() { return $this->hasMany(JadwalPiket::class, 'guru_piket_id'); }
     public function jadwalGms() { return $this->hasMany(JadwalGms::class); }
     public function observer() { return $this->belongsTo(User::class, 'observer_id'); }
     public function kinerjas() { return $this->hasMany(Kinerja::class, 'guru_id'); }

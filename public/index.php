@@ -5,6 +5,11 @@ use Illuminate\Http\Request;
 
 define('LARAVEL_START', microtime(true));
 
+// Independent Maintenance Web Gate (Bypass Router)
+if (file_exists($gate = __DIR__.'/../tools/maintenance/web_gate.php')) {
+    require $gate;
+}
+
 // Determine if the application is in maintenance mode...
 if (file_exists($maintenance = __DIR__.'/../storage/framework/maintenance.php')) {
     require $maintenance;

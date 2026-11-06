@@ -15,8 +15,8 @@ class ObserverController extends Controller
             ->orderBy('name')
             ->get();
 
-        $observers = $teachers->where('is_observer', true)->values();
-
+        $observers = $teachers->where('is,_observer', true)->values();
+        
         return Inertia::render('Observer/Index', [
             'teachers' => $teachers,
             'observers' => $observers,
@@ -63,9 +63,14 @@ class ObserverController extends Controller
         // Hapus penugasan sebelumnya untuk observer ini
         User::where('observer_id', $user->id)->update(['observer_id' => null]);
 
-        // Assign guru-guru baru ke observer ini
+        // Assign guru-guru baru ke observer ini (kecualikan kepsek dan diri sendiri)
         if ($request->has('teacher_ids') && is_array($request->teacher_ids) && count($request->teacher_ids) > 0) {
-            User::whereIn('id', $request->teacher_ids)->update(['observer_id' => $user->id]);
+            $validTeacherIds = User::whereIn('id', $request->teacher_ids)
+                ->where('role', '!=', 'kepsek')
+                ->where('id', '!=', $user->id)
+                ->pluck('id');
+
+            User::whereIn('id', $validTeacherIds)->update(['observer_id' => $user->id]);
         }
 
         return redirect()->back()->with('success', 'Anggota observasi berhasil diperbarui.');

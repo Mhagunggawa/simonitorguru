@@ -73,7 +73,7 @@ class LaporanKinerjaPeriodikController extends Controller
             $kelasHadir = $userKelasRecords->where('status_kehadiran', 'Hadir')->count();
             $kelasIzin = $userKelasRecords->where('status_kehadiran', 'Izin')->count();
             $kelasSakit = $userKelasRecords->where('status_kehadiran', 'Sakit')->count();
-            $kelasAlpha = $userKelasRecords->whereIn('status_kehadiran', ['Alpha', 'Kosong'])->count();
+            $kelasAlpha = $userKelasRecords->where('status_kehadiran', 'Alpha')->count();
 
             $kelasDetails = $userKelasRecords->map(function($r) {
                 $tanggal = $r->jadwalPiket?->tanggal_piket ?? $r->created_at->format('Y-m-d');

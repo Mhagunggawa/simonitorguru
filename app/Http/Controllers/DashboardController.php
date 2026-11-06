@@ -63,7 +63,7 @@ class DashboardController extends Controller
             }
         }
 
-        // 3. Status Jadwal Guru Hari Ini
+        // 3. Status & Informasi Jadwal Guru (Piket & GMS)
         $hasJadwalPiketHariIni = JadwalPiket::where('guru_piket_id', $user->id)
             ->whereDate('tanggal_piket', today())
             ->exists();
@@ -74,6 +74,55 @@ class DashboardController extends Controller
         ][Carbon::now()->format('l')];
 
         $hasJadwalGmsHariIni = $user->jadwalGms()->where('hari', $hariIndo)->exists();
+
+        // Cari hari-hari jadwal piket guru
+        $piketDays = [];
+        $hasAksesPiket = !$user->tipeGuru || $user->tipeGuru->akses_piket_kelas;
+        if ($hasAksesPiket) {
+            $now = Carbon::now();
+            $semesterStart = $now->month >= 7 ? Carbon::create($now->year, 7, 1)->startOfDay() : Carbon::create($now->year, 1, 1)->startOfDay();
+            $semesterEnd = $now->month >= 7 ? Carbon::create($now->year, 12, 31)->endOfDay() : Carbon::create($now->year, 6, 30)->endOfDay();
+
+            // 1. Prioritas jadwal piket yang akan datang / hari ini
+            $piketDates = JadwalPiket::where('guru_piket_id', $user->id)
+                ->whereDate('tanggal_piket', '>=', today())
+                ->orderBy('tanggal_piket', 'asc')
+                ->pluck('tanggal_piket');
+
+            // 2. Jika tidak ada jadwal mendatang, cek dalam semester aktif
+            if ($piketDates->isEmpty()) {
+                $piketDates = JadwalPiket::where('guru_piket_id', $user->id)
+                    ->whereBetween('tanggal_piket', [$semesterStart->toDateString(), $semesterEnd->toDateString()])
+                    ->orderBy('tanggal_piket', 'asc')
+                    ->pluck('tanggal_piket');
+            }
+
+            // 3. Jika tetap belum ada, ambil dari riwayat jadwal piket yang tercatat untuk guru ini
+            if ($piketDates->isEmpty()) {
+                $piketDates = JadwalPiket::where('guru_piket_id', $user->id)
+                    ->orderBy('tanggal_piket', 'desc')
+                    ->take(10)
+                    ->pluck('tanggal_piket');
+            }
+
+            if ($piketDates->isNotEmpty()) {
+                Carbon::setLocale('id');
+                $piketDays = $piketDates->map(function ($date) {
+                    return Carbon::parse($date)->locale('id')->isoFormat('dddd');
+                })->unique()->values()->all();
+            }
+        }
+
+        // Cari hari-hari jadwal GMS guru
+        $gmsDays = [];
+        $hasAksesGms = $user->tipeGuru && $user->tipeGuru->akses_gms;
+        if ($hasAksesGms) {
+            $gmsDays = $user->jadwalGms()->pluck('hari')->unique()->values()->all();
+        }
+
+        $piketDaysFormatted = $this->formatDaysList($piketDays);
+        $gmsDaysFormatted = $this->formatDaysList($gmsDays);
+        $informasiTugas = $this->generateTugasMessage($piketDaysFormatted, $gmsDaysFormatted);
 
         // 4. Data counts (Admin & Super Admin)
         $counts = [
@@ -159,6 +208,17 @@ class DashboardController extends Controller
             'observedDrives' => $observedDrives,
             'hasJadwalPiketHariIni' => $hasJadwalPiketHariIni,
             'hasJadwalGmsHariIni' => $hasJadwalGmsHariIni,
+            'informasiTugas' => $informasiTugas,
+            'piketInfo' => [
+                'has_jadwal' => !empty($piketDays),
+                'days' => $piketDays,
+                'days_formatted' => $piketDaysFormatted,
+            ],
+            'gmsInfo' => [
+                'has_jadwal' => !empty($gmsDays),
+                'days' => $gmsDays,
+                'days_formatted' => $gmsDaysFormatted,
+            ],
             'counts' => $counts,
             'recentUsers' => $recentUsers,
             'recentPiket' => $recentPiket,
@@ -166,5 +226,56 @@ class DashboardController extends Controller
             'wakasekData' => $wakasekData,
             'kepsekData' => $kepsekData,
         ]);
+    }
+
+    /**
+     * Format daftar hari menjadi string bahasa Indonesia yang rapi (misal: "hari Rabu", "hari Senin dan Kamis")
+     */
+    protected function formatDaysList(array $days): string
+    {
+        if (empty($days)) {
+            return '';
+        }
+
+        $dayOrder = ['Senin' => 1, 'Selasa' => 2, 'Rabu' => 3, 'Kamis' => 4, 'Jumat' => 5, 'Sabtu' => 6, 'Minggu' => 7];
+        usort($days, function ($a, $b) use ($dayOrder) {
+            return ($dayOrder[$a] ?? 99) <=> ($dayOrder[$b] ?? 99);
+        });
+
+        $days = array_values(array_unique($days));
+
+        if (count($days) === 1) {
+            return 'hari ' . $days[0];
+        }
+
+        if (count($days) === 2) {
+            return 'hari ' . $days[0] . ' dan ' . $days[1];
+        }
+
+        $last = array_pop($days);
+        return 'hari ' . implode(', ', $days) . ' dan ' . $last;
+    }
+
+    /**
+     * Buat 1 kalimat informatif terpadu tentang status tugas Piket dan jadwal GMS
+     */
+    protected function generateTugasMessage(string $piketDaysFormatted, string $gmsDaysFormatted): string
+    {
+        $hasPiket = !empty($piketDaysFormatted);
+        $hasGms = !empty($gmsDaysFormatted);
+
+        if ($hasPiket && $hasGms) {
+            return "Anda memiliki tugas piket {$piketDaysFormatted} dan jadwal GMS {$gmsDaysFormatted}.";
+        }
+
+        if ($hasPiket && !$hasGms) {
+            return "Anda memiliki tugas piket {$piketDaysFormatted} dan tidak memiliki jadwal GMS.";
+        }
+
+        if (!$hasPiket && $hasGms) {
+            return "Anda tidak memiliki jadwal piket dan memiliki jadwal GMS {$gmsDaysFormatted}.";
+        }
+
+        return "Anda tidak memiliki jadwal piket maupun jadwal GMS.";
     }
 }

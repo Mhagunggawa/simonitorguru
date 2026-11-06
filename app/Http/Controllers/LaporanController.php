@@ -22,6 +22,7 @@ class LaporanController extends Controller
                 'jadwalPiket.guruPiket',
                 'jadwalPiket.titik',
                 'jadwalPiket.jamPelajarans',
+                'jamPelajaran',
                 'jadwalMapel.guru',
                 'jadwalMapel.mataPelajaran',
                 'jadwalMapel.kelas.jurusan',
@@ -35,10 +36,94 @@ class LaporanController extends Controller
             });
         }
 
-        $rekapRecords = $query->get()->map(function($r) {
-            $r->is_piket_petugas = false;
-            return $r;
+        $allRekaps = $query->get();
+
+        // Kelompokkan data per sesi: jadwal_piket_id dan jam_pelajaran_id
+        $sessionGroups = $allRekaps->groupBy(function($r) {
+            $jamId = $r->jam_pelajaran_id 
+                ?? $r->jadwalMapel?->jamPelajarans?->first()?->id 
+                ?? $r->jadwalPiket?->jamPelajarans?->first()?->id 
+                ?? 0;
+            return $r->jadwal_piket_id . '_' . $jamId;
         });
+
+        $sessionRows = collect();
+        foreach ($sessionGroups as $groupKey => $records) {
+            $first = $records->first();
+            $jp = $first->jadwalPiket;
+            
+            // Tentukan jam pelajaran untuk sesi ini
+            $jamPelajaran = $first->jamPelajaran 
+                ?? $first->jadwalMapel?->jamPelajarans?->first() 
+                ?? $jp?->jamPelajarans?->first();
+
+            $urutanJam = $jamPelajaran?->urutan_jam;
+            $waktuMulai = $jamPelajaran?->waktu_mulai ? substr($jamPelajaran->waktu_mulai, 0, 5) : '';
+            $waktuSelesai = $jamPelajaran?->waktu_selesai ? substr($jamPelajaran->waktu_selesai, 0, 5) : '';
+            $jamStr = $urutanJam ? "Jam ke-{$urutanJam}" . ($waktuMulai ? " ({$waktuMulai} - {$waktuSelesai} WIB)" : '') : '-';
+
+            $foto = $records->firstWhere('foto_dokumentasi', '!=', null)?->foto_dokumentasi;
+            $isTerlambat = $records->contains('is_terlambat', true);
+
+            $classes = $records->map(function($r) {
+                return (object)[
+                    'id' => $r->id,
+                    'jadwal_mapel_id' => $r->jadwal_mapel_id,
+                    'kelas_nama' => $r->jadwalMapel?->kelas?->nama_kelas ?? '-',
+                    'jurusan_nama' => $r->jadwalMapel?->kelas?->jurusan?->nama_jurusan ?? null,
+                    'mapel_nama' => $r->jadwalMapel?->mataPelajaran?->nama_mapel ?? '-',
+                    'guru_nama' => $r->jadwalMapel?->guru?->name ?? 'Belum Ditentukan',
+                    'status_kehadiran' => $r->status_kehadiran,
+                    'keterangan' => $r->keterangan,
+                    'is_terlambat' => $r->is_terlambat,
+                    'jam_str' => $r->jadwalMapel?->jamPelajarans?->pluck('urutan_jam')->join(', ') ?: '-',
+                    'jadwal_mapel' => $r->jadwalMapel,
+                ];
+            });
+
+            $totalCount = $classes->count();
+            $hadirCount = $classes->where('status_kehadiran', 'Hadir')->count();
+            $izinCount = $classes->where('status_kehadiran', 'Izin')->count();
+            $sakitCount = $classes->where('status_kehadiran', 'Sakit')->count();
+            $alphaCount = $classes->where('status_kehadiran', 'Alpha')->count();
+            $tidakHadirCount = $totalCount - $hadirCount;
+
+            $ringkasanParts = [];
+            if ($hadirCount > 0) $ringkasanParts[] = "{$hadirCount} Hadir";
+            if ($izinCount > 0) $ringkasanParts[] = "{$izinCount} Izin";
+            if ($sakitCount > 0) $ringkasanParts[] = "{$sakitCount} Sakit";
+            if ($alphaCount > 0) $ringkasanParts[] = "{$alphaCount} Alpha";
+
+            $ringkasanTeks = $hadirCount === $totalCount 
+                ? "Semua Hadir ({$totalCount} Kelas)" 
+                : implode(', ', $ringkasanParts);
+
+            $sessionRows->push((object)[
+                'id' => 'sesi_' . $groupKey,
+                'jadwal_piket_id' => $jp?->id,
+                'jadwal_piket' => $jp,
+                'jam_pelajaran' => $jamPelajaran,
+                'jam_str' => $jamStr,
+                'urutan_jam' => $urutanJam ?? 0,
+                'status_kehadiran' => 'Hadir',
+                'is_piket_petugas' => false,
+                'is_terlambat' => $isTerlambat,
+                'foto_dokumentasi' => $foto,
+                'total_kelas' => $totalCount,
+                'hadir_count' => $hadirCount,
+                'tidak_hadir_count' => $tidakHadirCount,
+                'ringkasan_teks' => $ringkasanTeks,
+                'ringkasan_status' => (object)[
+                    'Hadir' => $hadirCount,
+                    'Izin' => $izinCount,
+                    'Sakit' => $sakitCount,
+                    'Alpha' => $alphaCount,
+                ],
+                'classes' => $classes,
+                'keterangan' => null,
+                'created_at' => $first->created_at ?? ($jp?->tanggal_piket ? Carbon::parse($jp->tanggal_piket) : now()),
+            ]);
+        }
 
         // 2. Jadwal Piket tanpa laporan (Izin, Sakit, atau Alpha)
         $piketQuery = JadwalPiket::with([
@@ -67,43 +152,65 @@ class LaporanController extends Controller
                     $jp->update(['status' => 'Alpha']);
                 }
 
+                $jamPelajaran = $jp->jamPelajarans->first();
+                $urutanJamList = $jp->jamPelajarans->pluck('urutan_jam')->join(', ');
+                $jamStr = $urutanJamList ? "Piket Jam ke-{$urutanJamList}" : '-';
+
                 $piketStatusRows->push((object)[
                     'id' => 'jp_' . $jp->id,
                     'jadwal_piket_id' => $jp->id,
                     'jadwal_piket' => $jp,
-                    'jadwal_mapel' => null, // Kolom kelas kosong sesuai A3
+                    'jam_pelajaran' => $jamPelajaran,
+                    'jam_str' => $jamStr,
+                    'urutan_jam' => $jamPelajaran?->urutan_jam ?? 0,
                     'status_kehadiran' => $status,
                     'is_piket_petugas' => true,
                     'keterangan' => $jp->keterangan ?: ($status === 'Alpha' ? 'Guru piket tidak mengisi laporan pemantauan (Alpha)' : null),
                     'is_terlambat' => false,
                     'foto_dokumentasi' => null,
+                    'total_kelas' => 0,
+                    'hadir_count' => 0,
+                    'tidak_hadir_count' => 0,
+                    'ringkasan_teks' => "Petugas Piket {$status}",
+                    'ringkasan_status' => (object)[
+                        'Hadir' => 0,
+                        'Izin' => 0,
+                        'Sakit' => 0,
+                        'Alpha' => 0,
+                    ],
+                    'classes' => collect(),
                     'created_at' => Carbon::parse($jp->tanggal_piket),
                 ]);
             }
         }
 
-        $allRecords = $rekapRecords->concat($piketStatusRows);
+        $allRecords = $sessionRows->concat($piketStatusRows);
 
         // Filter Pencarian
         if ($request->filled('search')) {
             $search = strtolower($request->input('search'));
             $allRecords = $allRecords->filter(function($item) use ($search) {
-                $jp = $item->jadwal_piket ?? $item->jadwalPiket ?? null;
-                $jm = $item->jadwal_mapel ?? $item->jadwalMapel ?? null;
-
+                $jp = $item->jadwal_piket;
                 $piketGuru = strtolower($jp?->guruPiket?->name ?? '');
                 $titik = strtolower($jp?->titik?->nama_titik ?? '');
-                $mapelGuru = strtolower($jm?->guru?->name ?? '');
-                $mapel = strtolower($jm?->mataPelajaran?->nama_mapel ?? '');
-                $kelas = strtolower($jm?->kelas?->nama_kelas ?? '');
-                $status = strtolower($item->status_kehadiran ?? '');
+                $jam = strtolower($item->jam_str ?? '');
+                $statusPiket = strtolower($item->status_kehadiran ?? '');
 
-                return str_contains($piketGuru, $search) ||
-                       str_contains($titik, $search) ||
-                       str_contains($mapelGuru, $search) ||
-                       str_contains($mapel, $search) ||
-                       str_contains($kelas, $search) ||
-                       str_contains($status, $search);
+                if (str_contains($piketGuru, $search) || str_contains($titik, $search) || str_contains($jam, $search) || str_contains($statusPiket, $search)) {
+                    return true;
+                }
+
+                // Cari di dalam kelas-kelas sesi
+                foreach ($item->classes as $c) {
+                    if (str_contains(strtolower($c->guru_nama), $search) ||
+                        str_contains(strtolower($c->mapel_nama), $search) ||
+                        str_contains(strtolower($c->kelas_nama), $search) ||
+                        str_contains(strtolower($c->status_kehadiran), $search)) {
+                        return true;
+                    }
+                }
+
+                return false;
             });
         }
 
@@ -114,15 +221,29 @@ class LaporanController extends Controller
                 if ($statusFilter === 'terlambat') {
                     return !empty($item->is_terlambat);
                 }
-                return strtolower($item->status_kehadiran ?? '') === $statusFilter;
+
+                // Cek status sesi petugas
+                if (strtolower($item->status_kehadiran ?? '') === $statusFilter) {
+                    return true;
+                }
+
+                // Cek apakah ada kelas di sesi ini yang memiliki status tersebut
+                foreach ($item->classes as $c) {
+                    if (strtolower($c->status_kehadiran ?? '') === $statusFilter) {
+                        return true;
+                    }
+                }
+
+                return false;
             });
         }
 
         return $allRecords->sortByDesc(function($item) {
-            $jp = $item->jadwal_piket ?? $item->jadwalPiket ?? null;
+            $jp = $item->jadwal_piket;
             $date = $jp?->tanggal_piket ?? ($item->created_at ? $item->created_at->format('Y-m-d') : '1970-01-01');
+            $urutan = sprintf('%02d', $item->urutan_jam ?? 0);
             $time = $item->created_at ? $item->created_at->format('H:i:s') : '00:00:00';
-            return $date . ' ' . $time;
+            return $date . ' ' . $urutan . ' ' . $time;
         })->values();
     }
 
@@ -257,9 +378,8 @@ class LaporanController extends Controller
         $showAll = $request->input('show_all') === 'true';
 
         foreach ($teachers as $teacher) {
-            $gmsQuery = \App\Models\AbsensiGms::where('user_id', $teacher->id)
-                ->where('status', 'Alpha');
-            
+            // Perhitungan Alpha HANYA berasal dari pemantauan kelas oleh guru piket
+            // (guru yang bersangkutan mengajar di kelas dan dilaporkan Alpha oleh guru piket)
             $piketQuery = \App\Models\RekapKehadiran::where('status_kehadiran', 'Alpha')
                 ->whereHas('jadwalMapel', function($q) use ($teacher) {
                     $q->where('guru_id', $teacher->id);
@@ -268,46 +388,38 @@ class LaporanController extends Controller
             $spQuery = \App\Models\TindakLanjutEvaluasi::where('user_id', $teacher->id);
 
             if ($startDate && $endDate) {
-                $gmsQuery->whereBetween('tanggal', [$startDate, $endDate]);
                 $piketQuery->whereHas('jadwalPiket', function($q) use ($startDate, $endDate) {
-                    $q->whereBetween('tanggal_piket', [$startDate, $endDate]);
+                    $q->whereDate('tanggal_piket', '>=', $startDate)
+                      ->whereDate('tanggal_piket', '<=', $endDate);
                 });
             }
 
-            $gmsRecords = $gmsQuery->get(['tanggal', 'foto_bukti']);
             $piketRecords = $piketQuery->with([
                 'jadwalPiket.guruPiket:id,name',
                 'jadwalMapel.mataPelajaran:id,nama_mapel',
                 'jadwalMapel.kelas:id,nama_kelas'
-            ])->get(['id', 'jadwal_mapel_id', 'jadwal_piket_id', 'foto_dokumentasi', 'created_at']);
+            ])->get(['id', 'jadwal_mapel_id', 'jadwal_piket_id', 'status_kehadiran', 'keterangan', 'foto_dokumentasi', 'created_at']);
 
             $alphaDetails = collect();
-            foreach ($gmsRecords as $gms) {
-                $alphaDetails->push([
-                    'sumber' => 'GMS',
-                    'tanggal' => $gms->tanggal,
-                    'foto' => $gms->foto_bukti,
-                    'keterangan' => 'Alpha pada absensi GMS',
-                ]);
-            }
             foreach ($piketRecords as $piket) {
                 $kelasName = $piket->jadwalMapel?->kelas?->nama_kelas ?? '-';
                 $mapelName = $piket->jadwalMapel?->mataPelajaran?->nama_mapel ?? '-';
                 $petugas = $piket->jadwalPiket?->guruPiket?->name ?? 'Petugas Piket';
+                $ketTambahan = !empty($piket->keterangan) ? " | Catatan: {$piket->keterangan}" : '';
 
                 $alphaDetails->push([
-                    'sumber' => 'Piket',
+                    'sumber' => 'Piket Kelas',
                     'tanggal' => $piket->jadwalPiket->tanggal_piket ?? $piket->created_at->format('Y-m-d'),
                     'foto' => $piket->foto_dokumentasi,
                     'kelas' => $kelasName,
                     'mapel' => $mapelName,
                     'petugas_piket' => $petugas,
-                    'keterangan' => "Alpha di kelas {$kelasName} ({$mapelName}) - Dilaporkan oleh Guru Piket: {$petugas}",
+                    'keterangan' => "Alpha di kelas {$kelasName} ({$mapelName}) - Dilaporkan oleh Guru Piket: {$petugas}{$ketTambahan}",
                 ]);
             }
             $alphaDetails = $alphaDetails->sortByDesc('tanggal')->values()->all();
 
-            $totalAlpha = $gmsRecords->count() + $piketRecords->count();
+            $totalAlpha = $piketRecords->count();
 
             if ($totalAlpha > 0 || $showAll) {
                 $spHistory = $spQuery->get(['id', 'tipe_peringatan', 'file_dokumen', 'created_at'])->toArray();
@@ -402,11 +514,25 @@ class LaporanController extends Controller
         $periodeText = $this->getPeriodeText($request, $dates);
         $filters = $this->getFilters($request);
 
-        $totalHadir = $laporan->where('status_kehadiran', 'Hadir')->count();
-        $totalTerlambat = $laporan->where('is_terlambat', true)->count();
-        $totalIzin = $laporan->where('status_kehadiran', 'Izin')->count();
-        $totalSakit = $laporan->where('status_kehadiran', 'Sakit')->count();
-        $totalAlpha = $laporan->where('status_kehadiran', 'Alpha')->count();
+        $totalHadir = 0;
+        $totalTerlambat = 0;
+        $totalIzin = 0;
+        $totalSakit = 0;
+        $totalAlpha = 0;
+
+        foreach ($laporan as $sesi) {
+            if ($sesi->is_piket_petugas) {
+                if ($sesi->status_kehadiran === 'Izin') $totalIzin++;
+                elseif ($sesi->status_kehadiran === 'Sakit') $totalSakit++;
+                elseif ($sesi->status_kehadiran === 'Alpha') $totalAlpha++;
+            } else {
+                if ($sesi->is_terlambat) $totalTerlambat++;
+                $totalHadir += $sesi->ringkasan_status->Hadir ?? 0;
+                $totalIzin += $sesi->ringkasan_status->Izin ?? 0;
+                $totalSakit += $sesi->ringkasan_status->Sakit ?? 0;
+                $totalAlpha += $sesi->ringkasan_status->Alpha ?? 0;
+            }
+        }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.piket_pdf', compact(
             'laporan',

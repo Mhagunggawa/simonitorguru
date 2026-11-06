@@ -124,7 +124,6 @@ const getStatusBadgeClass = (status: string) => {
         case 'Sakit':
             return 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300';
         case 'Alpha':
-        case 'Kosong':
             return 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300';
         default:
             return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';

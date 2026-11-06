@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { dashboard } from '@/routes';
-import { Users, BookOpen, GraduationCap, School, ClipboardCheck, Calendar, Clock, Activity, Camera, Percent, AlertTriangle, BellRing, Folder, ExternalLink, ShieldCheck } from '@lucide/vue';
+import { Users, BookOpen, GraduationCap, School, ClipboardCheck, Calendar, Clock, Activity, Camera, Percent, AlertTriangle, BellRing, Folder, ExternalLink, ShieldCheck, CheckCircle2, Info } from '@lucide/vue';
 import { computed } from 'vue';
 
 const props = defineProps<{
@@ -44,6 +44,17 @@ const props = defineProps<{
     };
     hasJadwalPiketHariIni?: boolean;
     hasJadwalGmsHariIni?: boolean;
+    informasiTugas?: string;
+    piketInfo?: {
+        has_jadwal: boolean;
+        days: string[];
+        days_formatted: string;
+    };
+    gmsInfo?: {
+        has_jadwal: boolean;
+        days: string[];
+        days_formatted: string;
+    };
     user?: any;
     myDrive?: {
         id: number;
@@ -168,6 +179,10 @@ const jadwal_piket_hari_ini = computed(() => {
 
 const has_jadwal_gms_hari_ini = computed(() => {
     return props.hasJadwalGmsHariIni ?? false;
+});
+
+const informasi_tugas = computed(() => {
+    return props.informasiTugas || 'Anda tidak memiliki jadwal piket maupun jadwal GMS.';
 });
 
 const baseCards = computed(() => [
@@ -557,16 +572,16 @@ const superAdminCards = computed(() => [
                     <div class="text-white space-y-2">
                         <h1 class="text-3xl font-bold tracking-tight md:text-4xl">Halo, {{ $page.props.auth.user.name }} 👋</h1>
                         <p class="text-emerald-50 font-medium opacity-90">{{ currentDate }}</p>
-                        <p class="text-sm text-emerald-50 max-w-md mt-2 leading-relaxed">
+                        <p class="text-sm text-emerald-50 max-w-lg mt-2 leading-relaxed">
                             Selamat datang di aplikasi Simonitorguru. 
-                            Anda memiliki tugas piket {{ jadwal_piket_hari_ini ? 'hari ini' : 'besok' }} dan jadwal GMS {{ has_jadwal_gms_hari_ini ? 'hari ini' : 'besok' }}.
+                            {{ informasi_tugas }}
                         </p>
-                        <div v-if="myDrive?.google_drive_url" class="pt-3">
+                        <div v-if="myDrive?.google_drive_url" class="pt-2 sm:pt-3">
                             <a 
                                 :href="myDrive.google_drive_url" 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                class="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-semibold text-sm backdrop-blur-md transition-all shadow-md hover:scale-[1.02] border border-white/30 group"
+                                class="inline-flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-semibold text-xs sm:text-sm backdrop-blur-md transition-all shadow-md hover:scale-[1.02] border border-white/30 group"
                             >
                                 <Folder class="w-4 h-4 text-emerald-100 group-hover:scale-110 transition-transform" />
                                 <span>Pintasan Google Drive Saya</span>
@@ -614,43 +629,64 @@ const superAdminCards = computed(() => [
             </div>
 
             <!-- Widget Google Drive Kinerja Guru -->
-            <div class="rounded-2xl border border-sidebar-border/70 bg-card p-6 shadow-sm hover:shadow-md transition-all" :class="myDrive?.google_drive_url ? 'border-blue-200 dark:border-blue-900/50 bg-gradient-to-r from-blue-50/30 via-card to-card dark:from-blue-950/20' : ''">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-5">
-                    <div class="flex items-start gap-4">
-                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center dark:bg-blue-950/60 dark:text-blue-400 shrink-0 shadow-sm">
-                            <Folder class="w-6 h-6" />
+            <div 
+                class="rounded-2xl border transition-all p-4 sm:p-5 md:p-6 shadow-sm hover:shadow-md" 
+                :class="myDrive?.google_drive_url 
+                    ? 'border-blue-200 dark:border-blue-900/60 bg-gradient-to-br from-blue-50/50 via-card to-card dark:from-blue-950/25 dark:via-card dark:to-card' 
+                    : 'border-sidebar-border/70 bg-card'"
+            >
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
+                    <div class="flex items-start gap-3 sm:gap-4">
+                        <div 
+                            class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 shadow-xs"
+                            :class="myDrive?.google_drive_url ? 'bg-blue-600 text-white dark:bg-blue-600' : 'bg-blue-100 text-blue-600 dark:bg-blue-950/70 dark:text-blue-400'"
+                        >
+                            <Folder class="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <h2 class="text-xl font-bold text-foreground">Folder Google Drive Kinerja Saya</h2>
-                                <span v-if="myDrive?.google_drive_url" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h2 class="text-base sm:text-lg md:text-xl font-bold tracking-tight text-foreground leading-snug">
+                                    Folder Google Drive Kinerja Saya
+                                </h2>
+                                <span 
+                                    v-if="myDrive?.google_drive_url" 
+                                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0"
+                                >
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                                     Aktif & Diizinkan
                                 </span>
-                                <span v-else class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                <span 
+                                    v-else 
+                                    class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800 shrink-0"
+                                >
                                     Dalam Persiapan
                                 </span>
                             </div>
-                            <p class="text-sm text-muted-foreground mt-1">
+                            <p class="text-xs sm:text-sm text-muted-foreground mt-1.5 leading-relaxed">
                                 Folder resmi dari Wakasek Kurikulum untuk pengunggahan Modul Ajar, Perangkat Pembelajaran, dan Video Rekaman Observasi Praktik Mengajar.
                             </p>
-                            <div v-if="myDrive?.keterangan" class="mt-2.5 p-2.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 text-xs text-blue-900 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
-                                <strong>Catatan Kurikulum:</strong> {{ myDrive.keterangan }}
+                            <div v-if="myDrive?.keterangan" class="mt-2.5 p-2.5 sm:p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 text-xs text-blue-900 dark:text-blue-200 border border-blue-200/80 dark:border-blue-900/60 flex items-start gap-2">
+                                <Info class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                <div class="leading-relaxed">
+                                    <strong class="font-semibold text-blue-950 dark:text-blue-100">Catatan Kurikulum:</strong> {{ myDrive.keterangan }}
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="shrink-0 flex items-center">
+                    
+                    <div class="w-full md:w-auto shrink-0 pt-2 md:pt-0">
                         <a 
                             v-if="myDrive?.google_drive_url" 
                             :href="myDrive.google_drive_url" 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            class="w-full md:w-auto inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all bg-blue-600 text-white hover:bg-blue-700 h-11 px-6 shadow-sm hover:shadow"
+                            class="w-full md:w-auto inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] h-11 px-6 shadow-sm hover:shadow cursor-pointer"
                         >
                             <span>Buka Google Drive Saya</span>
                             <ExternalLink class="w-4 h-4" />
                         </a>
-                        <div v-else class="text-xs text-muted-foreground italic px-3 py-2 bg-muted rounded-lg">
-                            Tautan drive belum disediakan atau belum diizinkan oleh pihak Kurikulum
+                        <div v-else class="w-full md:w-auto text-xs text-center text-muted-foreground italic px-4 py-2.5 bg-muted/70 rounded-xl border border-border">
+                            Tautan drive belum disediakan oleh pihak Kurikulum
                         </div>
                     </div>
                 </div>
@@ -709,25 +745,25 @@ const superAdminCards = computed(() => [
             </div>
 
             <!-- Widget Drive Guru Binaaan untuk Observer -->
-            <div v-if="observedDrives && observedDrives.length > 0" class="rounded-2xl border border-sidebar-border/70 bg-card p-6 shadow-sm space-y-4">
-                <div class="flex items-center justify-between border-b border-border/60 pb-3">
+            <div v-if="observedDrives && observedDrives.length > 0" class="rounded-2xl border border-sidebar-border/70 bg-card p-4 sm:p-5 md:p-6 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b border-border/60 pb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
-                        <ShieldCheck class="w-5 h-5 text-emerald-600" />
-                        <h3 class="font-bold text-base text-foreground">Drive Pembelajaran Guru Binaaan (Observer)</h3>
+                        <ShieldCheck class="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        <h3 class="font-bold text-sm sm:text-base text-foreground">Drive Pembelajaran Guru Binaan (Observer)</h3>
                     </div>
-                    <span class="text-xs text-muted-foreground">{{ observedDrives.length }} Guru Binaaan</span>
+                    <span class="text-xs text-muted-foreground bg-muted px-2.5 py-0.5 rounded-md font-medium">{{ observedDrives.length }} Guru Binaan</span>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div v-for="obs in observedDrives" :key="obs.id" class="p-3.5 rounded-xl border border-border bg-muted/20 flex flex-col justify-between gap-3">
                         <div>
                             <p class="font-bold text-sm text-foreground">{{ obs.guru?.name }}</p>
-                            <p class="text-xs text-muted-foreground">{{ obs.guru?.email }}</p>
+                            <p class="text-xs text-muted-foreground truncate">{{ obs.guru?.email }}</p>
                         </div>
                         <a 
                             :href="obs.google_drive_url" 
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="inline-flex items-center justify-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors"
+                            class="w-full inline-flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 px-3 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors cursor-pointer"
                         >
                             <Folder class="w-3.5 h-3.5" />
                             <span>Buka Folder Drive</span>

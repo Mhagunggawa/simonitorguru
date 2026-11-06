@@ -16,7 +16,11 @@ import {
     Clock,
     CheckCircle2,
     AlertCircle,
-    RotateCcw
+    RotateCcw,
+    SwitchCamera,
+    RectangleVertical,
+    RectangleHorizontal,
+    FlipHorizontal
 } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import Swal from 'sweetalert2';
@@ -64,6 +68,13 @@ const photoSize = ref<string | null>(null);
 
 const cameraActive = ref(false);
 const isTakingPhoto = ref(false);
+const currentFacingMode = ref<'user' | 'environment'>('user');
+const cameraOrientation = ref<'portrait' | 'landscape'>('portrait');
+const isMirrored = ref(false);
+
+const toggleMirror = () => {
+    isMirrored.value = !isMirrored.value;
+};
 
 const cameraStream = ref<MediaStream | null>(null);
 
@@ -80,20 +91,29 @@ const startCamera = async () => {
         }
         stopCamera();
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                facingMode: {
-                    ideal: 'user'
+        const isPortrait = cameraOrientation.value === 'portrait';
+        let stream: MediaStream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: {
+                        ideal: currentFacingMode.value
+                    },
+                    width: {
+                        ideal: isPortrait ? 1080 : 1920
+                    },
+                    height: {
+                        ideal: isPortrait ? 1920 : 1080
+                    }
                 },
-                width: {
-                    ideal: 1280
-                },
-                height: {
-                    ideal: 1920
-                }
-            },
-            audio: false
-        });
+                audio: false
+            });
+        } catch (e) {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
+        }
 
         cameraStream.value = stream;
         cameraActive.value = true;
@@ -112,6 +132,18 @@ const startCamera = async () => {
             icon: 'error',
             confirmButtonText: 'Mengerti'
         });
+    }
+};
+
+const switchCamera = async () => {
+    currentFacingMode.value = currentFacingMode.value === 'user' ? 'environment' : 'user';
+    await startCamera();
+};
+
+const toggleOrientation = async () => {
+    cameraOrientation.value = cameraOrientation.value === 'portrait' ? 'landscape' : 'portrait';
+    if (cameraActive.value) {
+        await startCamera();
     }
 };
 
@@ -156,6 +188,7 @@ const takePhoto = async () => {
             return;
         }
 
+        // Ambil frame kamera penuh / uncropped (zoom out)
         canvas.width = width;
         canvas.height = height;
 
@@ -165,14 +198,16 @@ const takePhoto = async () => {
             isTakingPhoto.value = false;
             return;
         }
-        // Mengambil foto sesuai orientasi asli kamera (tidak di-mirror)
-        context.drawImage(
-            video,
-            0,
-            0,
-            width,
-            height
-        );
+
+        if (isMirrored.value && currentFacingMode.value === 'user') {
+            context.save();
+            context.translate(canvas.width, 0);
+            context.scale(-1, 1);
+            context.drawImage(video, 0, 0, width, height);
+            context.restore();
+        } else {
+            context.drawImage(video, 0, 0, width, height);
+        }
 
         // Kompresi foto ke target ~100KB agar ringan dan tidak membebani server
         const result = await compressCanvasToTargetSize(canvas, {
@@ -442,21 +477,76 @@ onBeforeUnmount(() => {
                             Foto Bukti (Selfie)
                         </Label>
                         <div
-                            class="relative w-full aspect-[3/4] bg-slate-100 dark:bg-slate-800 rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600"
+                            class="relative w-full bg-slate-950 rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 transition-all duration-300 mx-auto"
+                            :class="cameraOrientation === 'portrait' ? 'h-[460px] sm:h-[520px] w-full' : 'aspect-[16/9] sm:aspect-[4/3] min-h-[320px] w-full'"
                         >
+                            <!-- Mode Orientation Toggle (Top-Left) -->
+                            <div
+                                v-if="!imagePreview"
+                                class="absolute top-3 left-3 z-20 flex items-center gap-2"
+                            >
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    @click="toggleOrientation"
+                                    :disabled="isTakingPhoto"
+                                    class="bg-black/60 hover:bg-black/80 text-white border border-white/20 backdrop-blur-md shadow-lg rounded-full px-3 py-1.5 h-auto text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                                    :title="cameraOrientation === 'portrait' ? 'Ubah ke Mode Landscape' : 'Ubah ke Mode Potrait'"
+                                >
+                                    <RectangleVertical v-if="cameraOrientation === 'portrait'" class="w-4 h-4 text-amber-400" />
+                                    <RectangleHorizontal v-else class="w-4 h-4 text-cyan-400" />
+                                    <span>{{ cameraOrientation === 'portrait' ? 'Potrait' : 'Landscape' }}</span>
+                                </Button>
+                            </div>
+
+                            <!-- Floating Switch Camera & Mirror Controls (Top-Right) -->
+                            <div
+                                v-if="cameraActive"
+                                class="absolute top-3 right-3 z-20 flex items-center gap-1.5"
+                            >
+                                <Button
+                                    v-if="currentFacingMode === 'user'"
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    @click="toggleMirror"
+                                    :disabled="isTakingPhoto"
+                                    class="bg-black/60 hover:bg-black/80 text-white border border-white/20 backdrop-blur-md shadow-lg rounded-full px-2.5 py-1.5 h-auto text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                                    :title="isMirrored ? 'Mode Cermin Aktif (klik untuk matikan)' : 'Mode Normal / Tidak Bermirror (klik untuk cermin)'"
+                                >
+                                    <FlipHorizontal class="w-3.5 h-3.5 text-violet-400" />
+                                    <span>{{ isMirrored ? 'Cermin' : 'Normal' }}</span>
+                                </Button>
+
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    @click="switchCamera"
+                                    :disabled="isTakingPhoto"
+                                    class="bg-black/60 hover:bg-black/80 text-white border border-white/20 backdrop-blur-md shadow-lg rounded-full px-3 py-1.5 h-auto text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                                    title="Ganti Kamera Depan / Belakang"
+                                >
+                                    <SwitchCamera class="w-4 h-4 text-emerald-400" />
+                                    <span>{{ currentFacingMode === 'user' ? 'Kamera Depan' : 'Kamera Belakang' }}</span>
+                                </Button>
+                            </div>
+
                             <video
                                 v-if="cameraActive"
                                 ref="videoElement"
                                 autoplay
                                 playsinline
                                 muted
-                                class="absolute inset-0 w-full h-full object-cover"
+                                class="absolute inset-0 w-full h-full object-contain bg-black transition-transform duration-200"
+                                :class="{'scale-x-[-1]': isMirrored && currentFacingMode === 'user'}"
                             ></video>
 
                             <img
                                 v-else-if="imagePreview"
                                 :src="imagePreview"
-                                class="absolute inset-0 w-full h-full object-cover"
+                                class="absolute inset-0 w-full h-full object-contain bg-black"
                                 alt="Preview Foto Absensi"
                             />
 
@@ -470,7 +560,7 @@ onBeforeUnmount(() => {
                             </div>
 
                             <div
-                                v-else
+                                v-else-if="!cameraActive && !imagePreview"
                                 class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 dark:text-slate-400"
                             >
 
@@ -492,7 +582,7 @@ onBeforeUnmount(() => {
 
                         </div>
 
-                        <div class="flex gap-3">
+                        <div class="flex flex-wrap gap-2.5">
                             <Button
                                 v-if="!cameraActive && !imagePreview"
                                 type="button"
@@ -504,21 +594,44 @@ onBeforeUnmount(() => {
                                 Buka Kamera
                             </Button>
 
-                            <Button
-                                v-if="cameraActive"
-                                type="button"
-                                class="w-full h-12 rounded-xl"
-                                :disabled="isTakingPhoto"
-                                @click="takePhoto"
-                            >
-                                <Camera class="w-5 h-5 mr-2" />
+                            <template v-if="cameraActive">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    class="h-12 rounded-xl px-4 flex-shrink-0 bg-background/90 backdrop-blur-md border border-border shadow-sm"
+                                    :disabled="isTakingPhoto"
+                                    @click="switchCamera"
+                                    title="Ganti Kamera Depan / Belakang"
+                                >
+                                    <SwitchCamera class="w-4 h-4 mr-1.5 text-primary" />
+                                    <span>Ganti Kamera</span>
+                                </Button>
 
-                                {{
-                                    isTakingPhoto
-                                        ? 'Mengompres Foto...'
-                                        : 'Ambil Foto'
-                                }}
-                            </Button>
+                                <Button
+                                    type="button"
+                                    class="flex-1 h-12 rounded-xl shadow-md"
+                                    :disabled="isTakingPhoto"
+                                    @click="takePhoto"
+                                >
+                                    <Camera class="w-5 h-5 mr-2" />
+
+                                    {{
+                                        isTakingPhoto
+                                            ? 'Mengompres Foto...'
+                                            : 'Ambil Foto'
+                                    }}
+                                </Button>
+
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    class="h-12 rounded-xl px-4 flex-shrink-0"
+                                    :disabled="isTakingPhoto"
+                                    @click="stopCamera"
+                                >
+                                    Batal
+                                </Button>
+                            </template>
 
                             <Button
                                 v-if="imagePreview && !cameraActive"

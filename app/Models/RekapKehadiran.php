@@ -3,17 +3,16 @@
 namespace App\Models;
 
 use App\Traits\LogsActivity;
-
 use Illuminate\Database\Eloquent\Model;
 
 class RekapKehadiran extends Model
 {
     use LogsActivity;
 
-    use \App\Traits\LogsActivity;
     protected $fillable = [
         'jadwal_mapel_id',
         'jadwal_piket_id',
+        'jam_pelajaran_id',
         'status_kehadiran',
         'foto_dokumentasi',
         'keterangan',
@@ -22,4 +21,5 @@ class RekapKehadiran extends Model
 
     public function jadwalMapel() { return $this->belongsTo(JadwalMapel::class); }
     public function jadwalPiket() { return $this->belongsTo(JadwalPiket::class); }
+    public function jamPelajaran() { return $this->belongsTo(JamPelajaran::class); }
 }

@@ -16,7 +16,6 @@ Route::get('/manifest.json', function () {
     ]);
 });
 
-
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
 

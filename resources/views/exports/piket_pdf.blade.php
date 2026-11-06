@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-    <title>Laporan Rekapitulasi Piket Kelas</title>
+    <title>Laporan Rekapitulasi Piket Per Sesi</title>
     <style>
         @page {
             margin: 12mm 15mm 15mm 15mm;
@@ -10,7 +10,7 @@
         }
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 10px;
+            font-size: 9.5px;
             color: #1e293b;
             margin: 0;
             padding: 0;
@@ -35,7 +35,7 @@
             color: #1e293b;
         }
         .header p {
-            font-size: 9.5px;
+            font-size: 9px;
             color: #64748b;
             margin: 0;
         }
@@ -52,7 +52,7 @@
             border: 1px solid #cbd5e1;
             border-radius: 4px;
             padding: 6px 10px;
-            font-size: 9.5px;
+            font-size: 9px;
         }
         .meta-table {
             width: 100%;
@@ -80,7 +80,7 @@
             padding: 1px 6px;
             border-radius: 3px;
             font-weight: bold;
-            font-size: 9px;
+            font-size: 8.5px;
             margin-right: 4px;
         }
         .stat-hadir { background-color: #d1fae5; color: #065f46; }
@@ -104,18 +104,15 @@
             background-color: #0f172a;
             color: #ffffff;
             font-weight: bold;
-            font-size: 9.5px;
+            font-size: 9px;
             text-align: center;
             text-transform: uppercase;
-        }
-        table.data-table tr:nth-child(even) {
-            background-color: #f8fafc;
         }
         .text-center { text-align: center !important; }
         .text-right { text-align: right !important; }
         .status-badge {
             font-weight: bold;
-            font-size: 9.5px;
+            font-size: 9px;
         }
         .status-hadir { color: #059669; }
         .status-izin { color: #2563eb; }
@@ -125,11 +122,10 @@
             color: #ea580c;
             font-size: 8.5px;
             font-weight: bold;
-            display: block;
         }
         .piket-tag {
             color: #64748b;
-            font-size: 8.5px;
+            font-size: 8px;
             font-style: italic;
             display: block;
         }
@@ -150,8 +146,8 @@
     <!-- Kop Surat -->
     <div class="header">
         <h1>{{ $settingan->nama_instansi ?? 'SISTEM MONITORING GURU' }}</h1>
-        <h2>LAPORAN REKAPITULASI PIKET KELAS</h2>
-        <p>Monitoring Kehadiran & Pelaksanaan Piket Kelas Berdasarkan Jadwal</p>
+        <h2>LAPORAN REKAPITULASI PIKET KELAS PER SESI</h2>
+        <p>Monitoring Kehadiran & Pelaksanaan Pemantauan Kelas Berdasarkan Jadwal Shift Piket</p>
     </div>
     <div class="divider"></div>
 
@@ -172,10 +168,10 @@
                 <td class="meta-value">{{ !empty($filters['search']) ? $filters['search'] : '-' }}</td>
             </tr>
             <tr>
-                <td class="meta-label">Ringkasan Data</td>
+                <td class="meta-label">Ringkasan Sesi</td>
                 <td class="meta-colon">:</td>
                 <td colspan="4" class="meta-value">
-                    <strong>Total: {{ count($laporan) }} Data</strong> &nbsp;|&nbsp;
+                    <strong>Total: {{ count($laporan) }} Sesi Piket</strong> &nbsp;|&nbsp;
                     <span class="badge-stat stat-hadir">Hadir: {{ $totalHadir ?? 0 }}</span>
                     <span class="badge-stat stat-terlambat">Terlambat: {{ $totalTerlambat ?? 0 }}</span>
                     <span class="badge-stat stat-izin">Izin: {{ $totalIzin ?? 0 }}</span>
@@ -186,90 +182,104 @@
         </table>
     </div>
 
-    <!-- Tabel Data Rekapitulasi -->
+    <!-- Tabel Data Rekapitulasi Per Sesi -->
     <table class="data-table">
         <thead>
             <tr>
                 <th class="text-center" style="width: 25px;">No</th>
-                <th style="width: 70px;">Tanggal</th>
-                <th style="width: 120px;">Guru Piket (Petugas)</th>
-                <th style="width: 80px;">Titik Piket</th>
-                <th style="width: 120px;">Guru Mengajar (Di Kelas)</th>
+                <th style="width: 65px;">Tanggal</th>
+                <th style="width: 75px;">Jam Piket</th>
+                <th style="width: 110px;">Guru Piket (Titik)</th>
+                <th style="width: 80px;">Kelas</th>
                 <th style="width: 110px;">Mata Pelajaran</th>
-                <th style="width: 85px;">Kelas & Jurusan</th>
-                <th class="text-center" style="width: 45px;">Jam Ke</th>
-                <th class="text-center" style="width: 70px;">Status</th>
+                <th style="width: 110px;">Guru Mengajar (Di Kelas)</th>
+                <th class="text-center" style="width: 60px;">Status</th>
                 <th>Keterangan</th>
             </tr>
         </thead>
         <tbody>
-            @forelse($laporan as $index => $item)
-            @php
-                $jp = $item->jadwal_piket ?? $item->jadwalPiket ?? null;
-                $jm = $item->jadwal_mapel ?? $item->jadwalMapel ?? null;
-                $tanggalFormatted = '-';
-                if (!empty($jp->tanggal_piket)) {
-                    try {
-                        $tanggalFormatted = \Carbon\Carbon::parse($jp->tanggal_piket)->translatedFormat('d/m/Y');
-                    } catch (\Exception $e) {
-                        $tanggalFormatted = $jp->tanggal_piket;
+            @php $sessionNum = 0; @endphp
+            @forelse($laporan as $sesi)
+                @php
+                    $sessionNum++;
+                    $jp = $sesi->jadwal_piket ?? null;
+                    $tanggalFormatted = '-';
+                    if (!empty($jp?->tanggal_piket)) {
+                        try {
+                            $tanggalFormatted = \Carbon\Carbon::parse($jp->tanggal_piket)->translatedFormat('d/m/Y');
+                        } catch (\Exception $e) {
+                            $tanggalFormatted = $jp->tanggal_piket;
+                        }
                     }
-                }
-            @endphp
-            <tr>
-                <td class="text-center">{{ $index + 1 }}</td>
-                <td>{{ $tanggalFormatted }}</td>
-                <td><strong>{{ $jp->guruPiket->name ?? '-' }}</strong></td>
-                <td>{{ $jp->titik->nama_titik ?? '-' }}</td>
-                <td>
-                    @if($jm && $jm->guru)
-                        <strong>{{ $jm->guru->name }}</strong>
-                    @else
-                        <span style="color: #94a3b8;">-</span>
-                    @endif
-                </td>
-                <td>{{ $jm?->mataPelajaran?->nama_mapel ?? '-' }}</td>
-                <td>
-                    @if($jm && $jm->kelas)
-                        {{ $jm->kelas->nama_kelas }}
-                        @if(isset($jm->kelas->jurusan))
-                            <br><small style="color: #64748b;">({{ $jm->kelas->jurusan->nama_jurusan }})</small>
-                        @endif
-                    @else
-                        <span style="color: #94a3b8;">-</span>
-                    @endif
-                </td>
-                <td class="text-center">
-                    @if($jm && $jm->jamPelajarans && $jm->jamPelajarans->count() > 0)
-                        {{ $jm->jamPelajarans->pluck('urutan_jam')->join(', ') }}
-                    @elseif($jp && $jp->jamPelajarans && $jp->jamPelajarans->count() > 0)
-                        {{ $jp->jamPelajarans->pluck('urutan_jam')->join(', ') }}
-                    @else
-                        -
-                    @endif
-                </td>
-                <td class="text-center">
-                    @php
-                        $statusClass = 'status-' . strtolower($item->status_kehadiran ?? '');
-                    @endphp
-                    <span class="status-badge {{ $statusClass }}">
-                        {{ $item->status_kehadiran ?? '-' }}
-                    </span>
-                    @if(!empty($item->is_piket_petugas))
-                        <span class="piket-tag">(Petugas Piket)</span>
-                    @endif
-                    @if(!empty($item->is_terlambat))
-                        <span class="terlambat-note">(Terlambat)</span>
-                    @endif
-                </td>
-                <td>{{ $item->keterangan ?? '-' }}</td>
-            </tr>
+                    $guruPiket = $jp?->guruPiket?->name ?? ($jp?->guru_piket?->name ?? '-');
+                    $titik = $jp?->titik?->nama_titik ?? '-';
+                    $totalClasses = count($sesi->classes);
+                @endphp
+
+                @if(!empty($sesi->is_piket_petugas))
+                    <tr style="background-color: #fffbeb;">
+                        <td class="text-center">{{ $sessionNum }}</td>
+                        <td>{{ $tanggalFormatted }}</td>
+                        <td>{{ $sesi->jam_str }}</td>
+                        <td><strong>{{ $guruPiket }}</strong><br><small style="color: #64748b;">Titik: {{ $titik }}</small></td>
+                        <td colspan="3" style="font-style: italic; color: #b45309;">
+                            Petugas piket tidak mengisi pemantauan kelas ({{ $sesi->status_kehadiran }})
+                        </td>
+                        <td class="text-center">
+                            <span class="status-badge status-{{ strtolower($sesi->status_kehadiran) }}">{{ $sesi->status_kehadiran }}</span>
+                            <span class="piket-tag">(Petugas)</span>
+                        </td>
+                        <td>{{ $sesi->keterangan ?? '-' }}</td>
+                    </tr>
+                @else
+                    {{-- Header Sesi Bar --}}
+                    <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #94a3b8;">
+                        <td class="text-center">{{ $sessionNum }}</td>
+                        <td>{{ $tanggalFormatted }}</td>
+                        <td>{{ $sesi->jam_str }}</td>
+                        <td>
+                            <strong>{{ $guruPiket }}</strong><br>
+                            <small style="color: #475569; font-weight: normal;">Titik: {{ $titik }}</small>
+                        </td>
+                        <td colspan="5">
+                            <span style="color: #0f172a;">Ringkasan Shift:</span> 
+                            <span style="color: #0369a1;">{{ $sesi->ringkasan_teks }}</span>
+                            @if(!empty($sesi->is_terlambat))
+                                <span class="terlambat-note" style="margin-left: 8px;">(Laporan Terlambat)</span>
+                            @endif
+                        </td>
+                    </tr>
+
+                    {{-- Rincian Kelas di Bawah Sesi --}}
+                    @foreach($sesi->classes as $cIdx => $c)
+                        <tr>
+                            <td style="border: none; background: #ffffff;"></td>
+                            <td colspan="3" style="text-align: right; color: #94a3b8; font-size: 8px; padding-right: 8px;">
+                                Kelas {{ $cIdx + 1 }} dari {{ $totalClasses }} &rarr;
+                            </td>
+                            <td>
+                                <strong>{{ $c->kelas_nama }}</strong>
+                                @if(!empty($c->jurusan_nama))
+                                    <br><small style="color: #64748b;">({{ $c->jurusan_nama }})</small>
+                                @endif
+                            </td>
+                            <td>{{ $c->mapel_nama }}</td>
+                            <td>{{ $c->guru_nama }}</td>
+                            <td class="text-center">
+                                <span class="status-badge status-{{ strtolower($c->status_kehadiran) }}">
+                                    {{ $c->status_kehadiran }}
+                                </span>
+                            </td>
+                            <td>{{ $c->keterangan ?: '-' }}</td>
+                        </tr>
+                    @endforeach
+                @endif
             @empty
-            <tr>
-                <td colspan="10" class="text-center" style="padding: 20px; font-style: italic; color: #64748b;">
-                    Tidak ada data laporan piket yang sesuai dengan filter yang dipilih.
-                </td>
-            </tr>
+                <tr>
+                    <td colspan="9" class="text-center" style="padding: 20px; font-style: italic; color: #64748b;">
+                        Tidak ada data laporan piket yang sesuai dengan filter yang dipilih.
+                    </td>
+                </tr>
             @endforelse
         </tbody>
     </table>

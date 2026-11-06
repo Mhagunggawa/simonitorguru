@@ -255,46 +255,110 @@ class PelaporanPiketController extends Controller
             ? $existingRekap->foto_dokumentasi
             : null;
 
-        $rules = [
-            'jadwal_piket_id' => 'required|exists:jadwal_pikets,id',
-            'jam_pelajaran_id' => 'required|exists:jam_pelajarans,id',
-            'jadwal_mapel_id' => [
-                'required',
-                'exists:jadwal_mapels,id',
-                Rule::unique('rekap_kehadirans')->where(function ($query) use ($request) {
-                    return $query->where('jadwal_piket_id', $request->jadwal_piket_id);
-                })
-            ],
-            'status_kehadiran' => 'required|in:Hadir,Izin,Sakit,Alpha,Kosong',
-            'foto_dokumentasi' => ($isTerlambat || $existingFoto) ? 'nullable|image|max:5120' : 'required|image|max:5120',
-            'keterangan' => 'nullable|string',
-        ];
+        $isBatch = $request->has('reports') && is_array($request->reports) && count($request->reports) > 0;
 
-        $messages = [
-            'jadwal_mapel_id.unique' => 'Kelas ini sudah dilaporkan pada shift ini.',
-            'foto_dokumentasi.required' => 'Foto dokumentasi wajib diisi untuk pelaporan tepat waktu.'
-        ];
+        if ($isBatch) {
+            $rules = [
+                'jadwal_piket_id' => 'required|exists:jadwal_pikets,id',
+                'jam_pelajaran_id' => 'required|exists:jam_pelajarans,id',
+                'reports' => 'required|array|min:1',
+                'reports.*.jadwal_mapel_id' => 'required|exists:jadwal_mapels,id',
+                'reports.*.status_kehadiran' => 'required|in:Hadir,Izin,Sakit,Alpha',
+                'reports.*.keterangan' => 'nullable|string|max:500',
+                'foto_dokumentasi' => ($isTerlambat || $existingFoto) ? 'nullable|image|max:5120' : 'required|image|max:5120',
+            ];
 
-        $request->validate($rules, $messages);
+            $messages = [
+                'reports.required' => 'Daftar laporan kelas wajib diisi.',
+                'reports.*.status_kehadiran.required' => 'Status kehadiran untuk setiap kelas wajib dipilih.',
+                'foto_dokumentasi.required' => 'Foto dokumentasi wajib diisi untuk pelaporan tepat waktu.'
+            ];
 
-        $path = null;
-        if ($existingFoto) {
-            $path = $existingFoto;
-        } elseif ($request->hasFile('foto_dokumentasi')) {
-            $path = ImageCompressor::storeCompressed($request->file('foto_dokumentasi'), 'pelaporan', 100);
-        }
+            $request->validate($rules, $messages);
 
-        RekapKehadiran::create([
-            'jadwal_mapel_id' => $request->jadwal_mapel_id,
-            'jadwal_piket_id' => $request->jadwal_piket_id,
-            'status_kehadiran' => $request->status_kehadiran,
-            'foto_dokumentasi' => $path,
-            'keterangan' => $request->keterangan,
-            'is_terlambat' => $isTerlambat,
-        ]);
+            $path = null;
+            if ($existingFoto) {
+                $path = $existingFoto;
+            } elseif ($request->hasFile('foto_dokumentasi')) {
+                $path = ImageCompressor::storeCompressed($request->file('foto_dokumentasi'), 'pelaporan', 100);
+            }
 
-        if ($jadwalPiket->status !== 'Hadir') {
-            $jadwalPiket->update(['status' => 'Hadir']);
+            \Illuminate\Support\Facades\DB::transaction(function() use ($request, $jadwalPiket, $path, $isTerlambat) {
+                foreach ($request->reports as $reportItem) {
+                    $alreadyReported = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)
+                        ->where('jadwal_mapel_id', $reportItem['jadwal_mapel_id'])
+                        ->first();
+
+                    $ket = !empty($reportItem['keterangan']) ? trim($reportItem['keterangan']) : null;
+
+                    if (!$alreadyReported) {
+                        RekapKehadiran::create([
+                            'jadwal_mapel_id' => $reportItem['jadwal_mapel_id'],
+                            'jadwal_piket_id' => $jadwalPiket->id,
+                            'jam_pelajaran_id' => $request->jam_pelajaran_id,
+                            'status_kehadiran' => $reportItem['status_kehadiran'],
+                            'foto_dokumentasi' => $path,
+                            'keterangan' => $ket,
+                            'is_terlambat' => $isTerlambat,
+                        ]);
+                    } else {
+                        $alreadyReported->update([
+                            'jam_pelajaran_id' => $request->jam_pelajaran_id ?? $alreadyReported->jam_pelajaran_id,
+                            'status_kehadiran' => $reportItem['status_kehadiran'],
+                            'foto_dokumentasi' => $path ?? $alreadyReported->foto_dokumentasi,
+                            'keterangan' => $ket,
+                            'is_terlambat' => $isTerlambat,
+                        ]);
+                    }
+                }
+
+                if ($jadwalPiket->status !== 'Hadir') {
+                    $jadwalPiket->update(['status' => 'Hadir']);
+                }
+            });
+        } else {
+            $rules = [
+                'jadwal_piket_id' => 'required|exists:jadwal_pikets,id',
+                'jam_pelajaran_id' => 'required|exists:jam_pelajarans,id',
+                'jadwal_mapel_id' => [
+                    'required',
+                    'exists:jadwal_mapels,id',
+                    Rule::unique('rekap_kehadirans')->where(function ($query) use ($request) {
+                        return $query->where('jadwal_piket_id', $request->jadwal_piket_id);
+                    })
+                ],
+                'status_kehadiran' => 'required|in:Hadir,Izin,Sakit,Alpha',
+                'foto_dokumentasi' => ($isTerlambat || $existingFoto) ? 'nullable|image|max:5120' : 'required|image|max:5120',
+                'keterangan' => 'nullable|string',
+            ];
+
+            $messages = [
+                'jadwal_mapel_id.unique' => 'Kelas ini sudah dilaporkan pada shift ini.',
+                'foto_dokumentasi.required' => 'Foto dokumentasi wajib diisi untuk pelaporan tepat waktu.'
+            ];
+
+            $request->validate($rules, $messages);
+
+            $path = null;
+            if ($existingFoto) {
+                $path = $existingFoto;
+            } elseif ($request->hasFile('foto_dokumentasi')) {
+                $path = ImageCompressor::storeCompressed($request->file('foto_dokumentasi'), 'pelaporan', 100);
+            }
+
+            RekapKehadiran::create([
+                'jadwal_mapel_id' => $request->jadwal_mapel_id,
+                'jadwal_piket_id' => $request->jadwal_piket_id,
+                'jam_pelajaran_id' => $request->jam_pelajaran_id,
+                'status_kehadiran' => $request->status_kehadiran,
+                'foto_dokumentasi' => $path,
+                'keterangan' => $request->keterangan,
+                'is_terlambat' => $isTerlambat,
+            ]);
+
+            if ($jadwalPiket->status !== 'Hadir') {
+                $jadwalPiket->update(['status' => 'Hadir']);
+            }
         }
 
         $hariPiket = Carbon::parse($jadwalPiket->tanggal_piket)->locale('id')->isoFormat('dddd');

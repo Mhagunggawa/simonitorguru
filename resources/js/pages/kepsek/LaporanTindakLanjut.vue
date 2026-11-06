@@ -548,7 +548,7 @@ const formatDateTime = (dateString?: string) => {
                 <DialogHeader>
                     <DialogTitle>Detail Alpha: {{ selectedDetailGuru?.nama }}</DialogTitle>
                     <DialogDescription>
-                        Rincian ketidakhadiran (Alpha) dari laporan presensi GMS maupun Piket.
+                        Rincian ketidakhadiran (Alpha) mengajar di kelas yang dilaporkan oleh guru piket.
                     </DialogDescription>
                 </DialogHeader>
 
