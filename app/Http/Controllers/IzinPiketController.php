@@ -20,14 +20,16 @@ class IzinPiketController extends Controller
             ->get();
 
         foreach($jadwalPikets as $jp) {
-            foreach($jp->jamPelajarans as $jam) {
-                $waktuSelesai = $jam->waktu_selesai;
-                if (strlen($waktuSelesai) <= 5) $waktuSelesai .= ':00';
-                
-                $endTime = \Carbon\Carbon::parse($jp->tanggal_piket . ' ' . $waktuSelesai);
-                $isPast = $now->greaterThan($endTime);
-                if ($isPast) {
-                    $hariPiket = \Carbon\Carbon::parse($jp->tanggal_piket)->locale('id')->isoFormat('dddd');
+            $piketSelesai = $jp->jamPelajarans->max('waktu_selesai');
+            if (!$piketSelesai) continue;
+            if (strlen($piketSelesai) <= 5) $piketSelesai .= ':00';
+
+            $endTime = \Carbon\Carbon::parse($jp->tanggal_piket . ' ' . $piketSelesai);
+            $isPast = $now->greaterThan($endTime);
+
+            if ($isPast) {
+                $hariPiket = \Carbon\Carbon::parse($jp->tanggal_piket)->locale('id')->isoFormat('dddd');
+                foreach($jp->jamPelajarans as $jam) {
                     $baseQuery = \App\Models\JadwalMapel::where('hari', $hariPiket)
                         ->whereHas('jamPelajarans', function($q) use ($jam) {
                             $q->where('jam_pelajarans.id', $jam->id);
@@ -37,7 +39,9 @@ class IzinPiketController extends Controller
                         });
                     
                     if ($baseQuery->count() > 0) {
-                        $reportedMapelIds = \App\Models\RekapKehadiran::where('jadwal_piket_id', $jp->id)->pluck('jadwal_mapel_id');
+                        $reportedMapelIds = \App\Models\RekapKehadiran::where('jadwal_piket_id', $jp->id)
+                            ->where('jam_pelajaran_id', $jam->id)
+                            ->pluck('jadwal_mapel_id');
                         $unreportedCount = $baseQuery->whereNotIn('id', $reportedMapelIds)->count();
 
                         if ($unreportedCount > 0) {

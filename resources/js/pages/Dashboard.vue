@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { dashboard } from '@/routes';
-import { Users, BookOpen, GraduationCap, School, ClipboardCheck, Calendar, Clock, Activity, Camera, Percent, AlertTriangle, BellRing, Folder, ExternalLink, ShieldCheck, CheckCircle2, Info } from '@lucide/vue';
+import { Users, BookOpen, GraduationCap, School, ClipboardCheck, Calendar, Clock, Activity, Camera, Percent, AlertTriangle, BellRing, Folder, ExternalLink, ShieldCheck, CheckCircle2, Info, Download } from '@lucide/vue';
 import { computed } from 'vue';
+import { usePanduanModal } from '@/composables/usePanduanModal';
+
+const { openPanduan } = usePanduanModal();
 
 const props = defineProps<{
     counts?: {
@@ -849,5 +852,29 @@ const superAdminCards = computed(() => [
             </div>
         </div>
     </template>
+
+    <!-- Tombol Mengambang (Floating Action Button) Panduan Aplikasi di Sudut Kanan Bawah -->
+    <div class="fixed bottom-6 right-6 z-40">
+        <button
+            type="button"
+            @click="openPanduan"
+            class="group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/30 hover:shadow-2xl hover:shadow-blue-500/40 hover:scale-105 active:scale-95 transition-all duration-300 focus:outline-hidden focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 cursor-pointer border border-white/20"
+            title="Buka & Unduh Panduan Aplikasi"
+            aria-label="Buka Panduan Aplikasi"
+        >
+            <!-- Ripple/Ping animation effect on hover -->
+            <span class="absolute -inset-0.5 rounded-full bg-blue-400 opacity-25 group-hover:animate-ping pointer-events-none"></span>
+
+            <!-- Icon Unduhan -->
+            <Download class="h-6 w-6 relative z-10 transition-transform duration-300 group-hover:-translate-y-0.5" />
+
+            <!-- Tooltip Hover (Desktop) -->
+            <span
+                class="pointer-events-none absolute right-full mr-3 whitespace-nowrap rounded-lg bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-white shadow-lg opacity-0 transition-opacity duration-200 group-hover:opacity-100 backdrop-blur-xs hidden sm:block"
+            >
+                Panduan Aplikasi (PDF)
+            </span>
+        </button>
+    </div>
 </template>
 

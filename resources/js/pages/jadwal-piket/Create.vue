@@ -72,40 +72,61 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Create Jadwal Piket" />
+    <Head title="Tambah Jadwal Piket" />
 
-    <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4 md:max-w-2xl mx-auto w-full">
-        <div class="flex items-center justify-between">
-            <h1 class="text-2xl font-bold tracking-tight">Create Jadwal Piket</h1>
-            <Button variant="outline" as-child>
-                <Link href="/jadwal-piket">Cancel</Link>
+    <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-3 sm:p-4 md:p-6 md:max-w-2xl mx-auto w-full">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Tambah Jadwal Piket</h1>
+                <p class="text-xs sm:text-sm text-muted-foreground">Plotting tugas piket harian untuk guru</p>
+            </div>
+            <Button variant="outline" size="sm" as-child>
+                <Link href="/jadwal-piket">Batal</Link>
             </Button>
         </div>
 
-        <div class="rounded-xl border border-sidebar-border/70 bg-card text-card-foreground shadow dark:border-sidebar-border p-6">
+        <div class="rounded-xl border border-sidebar-border/70 bg-card text-card-foreground shadow-sm dark:border-sidebar-border p-4 sm:p-6">
             <form @submit.prevent="submit" class="space-y-6">
                 <div class="space-y-4">
                     <div class="space-y-2">
-                        <Label for="tanggal_piket">Tanggal Piket</Label>
-                        <Input id="tanggal_piket" type="date" v-model="form.tanggal_piket" required autofocus />
+                        <Label for="tanggal_piket" class="text-sm font-semibold">Tanggal Piket</Label>
+                        <Input id="tanggal_piket" type="date" v-model="form.tanggal_piket" class="h-10 text-sm" required autofocus />
                         <InputError :message="form.errors.tanggal_piket" />
                     </div>
 
                     <div class="space-y-2 md:col-span-2">
-                        <Label>Jam Pelajaran</Label>
-                        <div class="grid grid-cols-2 gap-2 mt-2">
-                            <label v-for="jp in jamPelajarans" :key="jp.id" class="flex items-center space-x-2 cursor-pointer border p-2 rounded-md hover:bg-muted">
-                                <input type="checkbox" :value="jp.id" v-model="form.jam_pelajaran_ids" class="rounded border-gray-300 text-primary shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50" />
-                                <span class="text-sm">Jam ke-{{ jp.urutan_jam }} ({{ formatTime(jp.waktu_mulai) }} - {{ formatTime(jp.waktu_selesai) }})</span>
+                        <div class="flex items-center justify-between">
+                            <Label class="text-sm font-semibold">Jam Pelajaran</Label>
+                            <span class="text-xs text-muted-foreground">{{ form.jam_pelajaran_ids.length }} dipilih</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                            <label 
+                                v-for="jp in jamPelajarans" 
+                                :key="jp.id" 
+                                class="flex items-center space-x-2.5 cursor-pointer border p-2.5 rounded-lg hover:bg-muted transition-colors"
+                                :class="form.jam_pelajaran_ids.includes(jp.id) ? 'border-primary/60 bg-primary/5' : 'border-border'"
+                            >
+                                <input 
+                                    type="checkbox" 
+                                    :value="jp.id" 
+                                    v-model="form.jam_pelajaran_ids" 
+                                    class="rounded border-input text-primary shadow-xs focus:ring-primary h-4 w-4" 
+                                />
+                                <span class="text-xs sm:text-sm font-medium">
+                                    Jam ke-{{ jp.urutan_jam }} 
+                                    <span class="text-muted-foreground text-xs block sm:inline sm:ml-1 font-mono">
+                                        ({{ formatTime(jp.waktu_mulai) }} - {{ formatTime(jp.waktu_selesai) }})
+                                    </span>
+                                </span>
                             </label>
                         </div>
                         <InputError :message="form.errors.jam_pelajaran_ids" class="mt-2" />
                     </div>
 
                     <div class="space-y-2">
-                        <Label for="titik_id">Titik Lokasi Piket</Label>
+                        <Label for="titik_id" class="text-sm font-semibold">Titik Lokasi Piket</Label>
                         <Select v-model="form.titik_id">
-                            <SelectTrigger class="h-11 text-base">
+                            <SelectTrigger class="h-10 text-sm">
                                 <SelectValue placeholder="Pilih Titik Lokasi" />
                             </SelectTrigger>
                             <SelectContent>
@@ -118,9 +139,9 @@ const submit = () => {
                     </div>
 
                     <div class="space-y-2">
-                        <Label for="guru_piket_id">Guru Piket</Label>
+                        <Label for="guru_piket_id" class="text-sm font-semibold">Guru Piket</Label>
                         <Select v-model="form.guru_piket_id">
-                            <SelectTrigger class="h-11 text-base">
+                            <SelectTrigger class="h-10 text-sm">
                                 <SelectValue placeholder="Pilih Guru Piket" />
                             </SelectTrigger>
                             <SelectContent>
@@ -133,9 +154,11 @@ const submit = () => {
                     </div>
                 </div>
 
-                <div class="flex justify-end gap-4">
-                    <Button type="button" variant="outline" @click="form.reset()">Reset</Button>
-                    <Button type="submit" :disabled="form.processing">Create Jadwal Piket</Button>
+                <div class="flex flex-col-reverse sm:flex-row justify-end gap-2.5 sm:gap-4 pt-2 border-t border-border/60">
+                    <Button type="button" variant="outline" @click="form.reset()" class="w-full sm:w-auto h-10 cursor-pointer">Reset</Button>
+                    <Button type="submit" :disabled="form.processing" class="w-full sm:w-auto h-10 font-semibold cursor-pointer">
+                        Simpan Jadwal Piket
+                    </Button>
                 </div>
             </form>
         </div>

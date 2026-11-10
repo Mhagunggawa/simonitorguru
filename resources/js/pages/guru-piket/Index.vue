@@ -11,7 +11,7 @@ import {
     DialogDescription,
     DialogFooter
 } from '@/components/ui/dialog';
-import { ClipboardList, AlertCircle, CheckCircle, UserX } from '@lucide/vue';
+import { ClipboardList, AlertCircle, CheckCircle, UserX, Info } from '@lucide/vue';
 import Swal from 'sweetalert2';
 import { onMounted, watch, computed, ref } from 'vue';
 
@@ -23,8 +23,20 @@ const props = defineProps<{
         tanggal_piket: string;
         status?: string | null;
         keterangan?: string | null;
+        piket_waktu_mulai?: string | null;
+        piket_waktu_selesai?: string | null;
         titik: { nama_titik: string };
-        jam_pelajarans: Array<{ id: number, urutan_jam: number, waktu_mulai: string, waktu_selesai: string }>;
+        jam_pelajarans: Array<{ 
+            id: number; 
+            urutan_jam: number; 
+            waktu_mulai: string; 
+            waktu_selesai: string;
+            total_classes?: number;
+            reported_classes?: number;
+            unreported_classes?: number;
+            is_completed?: boolean;
+            has_no_classes?: boolean;
+        }>;
     }>;
     canAjukanIzinSakit?: boolean;
     activePiketId?: number | null;
@@ -142,20 +154,24 @@ const formatDate = (dateStr: string) => {
 
 const formatTime = (time: string) => time ? time.substring(0, 5) : '';
 
-const getReportState = (jam: any) => {
-    if (!jam || !jam.waktu_mulai || !jam.waktu_selesai) return 'INVALID';
+const getReportState = (jam: any, item?: any) => {
+    // Batas waktu sesi piket dihitung berdasarkan keseluruhan rentang jam piket guru pada jadwal ini
+    const mulaiStr = item?.piket_waktu_mulai || jam?.waktu_mulai;
+    const selesaiStr = item?.piket_waktu_selesai || jam?.waktu_selesai;
+
+    if (!mulaiStr || !selesaiStr) return 'INVALID';
     
     const now = new Date(props.serverTime);
     
-    let mulaiStr = jam.waktu_mulai;
-    if (mulaiStr.length <= 5) mulaiStr += ':00';
-    const [jamMulai, menitMulai, detikMulai] = mulaiStr.split(':').map(Number);
+    let mStr = String(mulaiStr);
+    if (mStr.length <= 5) mStr += ':00';
+    const [jamMulai, menitMulai, detikMulai = 0] = mStr.split(':').map(Number);
     const waktuMulai = new Date(props.serverTime);
     waktuMulai.setHours(jamMulai, menitMulai, detikMulai, 0);
     
-    let selesaiStr = jam.waktu_selesai;
-    if (selesaiStr.length <= 5) selesaiStr += ':00';
-    const [jamSelesai, menitSelesai, detikSelesai] = selesaiStr.split(':').map(Number);
+    let sStr = String(selesaiStr);
+    if (sStr.length <= 5) sStr += ':00';
+    const [jamSelesai, menitSelesai, detikSelesai = 0] = sStr.split(':').map(Number);
     const waktuSelesai = new Date(props.serverTime);
     waktuSelesai.setHours(jamSelesai, menitSelesai, detikSelesai, 0);
     
@@ -169,13 +185,7 @@ const getReportState = (jam: any) => {
 };
 
 const activeJadwalPikets = computed(() => {
-    if (!props.jadwalPikets) return [];
-    return props.jadwalPikets.map(piket => {
-        return {
-            ...piket,
-            jam_pelajarans: piket.jam_pelajarans
-        };
-    }).filter(piket => piket.jam_pelajarans.length > 0 || ['Izin', 'Sakit'].includes(piket.status || ''));
+    return props.jadwalPikets || [];
 });
 </script>
 
@@ -242,7 +252,10 @@ const activeJadwalPikets = computed(() => {
                                         Jam ke-{{ jam.urutan_jam }}
                                     </span>
                                     <span class="text-xs text-gray-500 dark:text-gray-400 ml-1">
-                                        {{ formatTime(jam.waktu_mulai) }} - {{ formatTime(jam.waktu_selesai) }}
+                                        Jam KBM: {{ formatTime(jam.waktu_mulai) }} - {{ formatTime(jam.waktu_selesai) }}
+                                    </span>
+                                    <span v-if="item.piket_waktu_selesai" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium ml-1">
+                                        Batas Piket: s/d {{ formatTime(item.piket_waktu_selesai) }} WIB
                                     </span>
                                 </div>
                             </td>
@@ -256,21 +269,36 @@ const activeJadwalPikets = computed(() => {
                                         {{ item.status }} (Bebas Lapor)
                                     </span>
                                 </template>
+
+                                <!-- Jika titik ini tidak memiliki jadwal KBM di jam tersebut -->
+                                <template v-else-if="jam.has_no_classes">
+                                    <span class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap shadow-xs border border-gray-200 dark:border-slate-700">
+                                        <Info class="h-3.5 w-3.5" /> Tidak Ada KBM di Titik Ini
+                                    </span>
+                                </template>
+
+                                <!-- Jika semua kelas untuk jam ini sudah selesai dilaporkan -->
+                                <template v-else-if="jam.is_completed">
+                                    <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap shadow-xs border border-emerald-200 dark:border-emerald-800">
+                                        <CheckCircle class="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Selesai Dilaporkan ({{ jam.total_classes }} Kelas)
+                                    </span>
+                                </template>
                                 
-                                <!-- Normal flow: Isi Laporan -->
-                                <template v-else-if="getReportState(jam) === 'AKTIF' || getReportState(jam) === 'SESI_DITUTUP'">
+                                <!-- Normal flow: Masih ada kelas yang belum dilaporkan -->
+                                <template v-else-if="getReportState(jam, item) === 'AKTIF' || getReportState(jam, item) === 'SESI_DITUTUP'">
                                     <Link 
                                         :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
                                         class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-9 px-4 py-2 shadow-sm whitespace-nowrap"
-                                        :class="getReportState(jam) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
+                                        :class="getReportState(jam, item) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
                                     >
-                                        <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam) === 'AKTIF' ? 'Isi Laporan' : 'Isi Laporan Susulan' }}
+                                        <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam, item) === 'AKTIF' ? 'Isi Laporan' : 'Isi Laporan Susulan' }}
+                                        <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
                                     </Link>
                                 </template>
                                 
-                                <template v-else-if="getReportState(jam) === 'BELUM_MULAI'">
+                                <template v-else-if="getReportState(jam, item) === 'BELUM_MULAI'">
                                     <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap shadow-sm border border-gray-200 dark:border-slate-700">
-                                        Belum Mulai
+                                        Belum Mulai <span v-if="jam.total_classes" class="ml-1 text-[11px] text-muted-foreground">({{ jam.total_classes }} Kelas)</span>
                                     </span>
                                 </template>
                             </td>
@@ -300,8 +328,11 @@ const activeJadwalPikets = computed(() => {
                     <div class="absolute top-0 left-0 w-1 h-full" :class="{
                         'bg-blue-500': item.status === 'Izin',
                         'bg-amber-500': item.status === 'Sakit',
-                        'bg-[#79AE6F]': !item.status && getReportState(jam) === 'AKTIF',
-                        'bg-gray-300 dark:bg-slate-600': !item.status && getReportState(jam) === 'BELUM_MULAI'
+                        'bg-gray-400': !item.status && jam.has_no_classes,
+                        'bg-emerald-500': !item.status && jam.is_completed,
+                        'bg-[#79AE6F]': !item.status && !jam.has_no_classes && !jam.is_completed && getReportState(jam, item) === 'AKTIF',
+                        'bg-yellow-500': !item.status && !jam.has_no_classes && !jam.is_completed && getReportState(jam, item) === 'SESI_DITUTUP',
+                        'bg-gray-300 dark:bg-slate-600': !item.status && !jam.has_no_classes && !jam.is_completed && getReportState(jam, item) === 'BELUM_MULAI'
                     }"></div>
 
                     <div class="flex justify-between items-start ml-2 border-b border-gray-50 dark:border-slate-800/50 pb-2">
@@ -322,9 +353,14 @@ const activeJadwalPikets = computed(() => {
                     <div class="flex justify-between items-center text-sm ml-2 mt-1">
                         <span class="font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            Waktu
+                            Jam KBM
                         </span>
                         <span class="font-medium text-right">{{ formatTime(jam.waktu_mulai) }} - {{ formatTime(jam.waktu_selesai) }}</span>
+                    </div>
+
+                    <div v-if="item.piket_waktu_selesai" class="flex justify-between items-center text-xs ml-2 mt-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                        <span>Batas Pelaporan Piket:</span>
+                        <span>s/d {{ formatTime(item.piket_waktu_selesai) }} WIB</span>
                     </div>
                     
                     <div class="mt-3 ml-2 pt-3 border-t border-gray-100 dark:border-slate-800/80">
@@ -337,19 +373,32 @@ const activeJadwalPikets = computed(() => {
                             </div>
                         </template>
 
-                        <template v-else-if="getReportState(jam) === 'AKTIF' || getReportState(jam) === 'SESI_DITUTUP'">
+                        <template v-else-if="jam.has_no_classes">
+                            <div class="flex items-center justify-center gap-1.5 w-full rounded-xl bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700">
+                                <Info class="h-3.5 w-3.5" /> Tidak Ada KBM di Titik Ini
+                            </div>
+                        </template>
+
+                        <template v-else-if="jam.is_completed">
+                            <div class="flex items-center justify-center gap-1.5 w-full rounded-xl bg-emerald-50 dark:bg-emerald-950/40 px-4 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle class="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Selesai Dilaporkan ({{ jam.total_classes }} Kelas)
+                            </div>
+                        </template>
+
+                        <template v-else-if="getReportState(jam, item) === 'AKTIF' || getReportState(jam, item) === 'SESI_DITUTUP'">
                             <Link 
                                 :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
                                 class="flex items-center justify-center w-full rounded-xl text-sm font-semibold transition-colors h-10 px-4 py-2 shadow-sm"
-                                :class="getReportState(jam) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
+                                :class="getReportState(jam, item) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
                             >
-                                <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam) === 'AKTIF' ? 'Isi Laporan Sekarang' : 'Isi Laporan Susulan' }}
+                                <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam, item) === 'AKTIF' ? 'Isi Laporan Sekarang' : 'Isi Laporan Susulan' }}
+                                <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
                             </Link>
                         </template>
                         
-                        <template v-else-if="getReportState(jam) === 'BELUM_MULAI'">
+                        <template v-else-if="getReportState(jam, item) === 'BELUM_MULAI'">
                             <div class="flex items-center justify-center w-full rounded-xl bg-gray-50 dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700">
-                                Sesi Belum Mulai
+                                Sesi Belum Mulai <span v-if="jam.total_classes" class="ml-1 text-xs text-muted-foreground">({{ jam.total_classes }} Kelas)</span>
                             </div>
                         </template>
                     </div>

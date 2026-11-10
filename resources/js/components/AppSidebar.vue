@@ -21,8 +21,10 @@ import { Users, UserCheck, GraduationCap, School, MapPin, Clock, Calendar, Clipb
 import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { usePwaInstall } from '@/composables/usePwaInstall';
+import { usePanduanModal } from '@/composables/usePanduanModal';
 
 const { installPwa } = usePwaInstall();
+const { openPanduan } = usePanduanModal();
 
 const page = usePage<any>();
 
@@ -266,9 +268,21 @@ const footerNavItems: NavItem[] = [
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton 
+                        @click="openPanduan"
+                        class="text-blue-700 bg-blue-50 hover:bg-blue-100 hover:text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium transition-colors cursor-pointer"
+                        title="Buku Panduan Penggunaan Aplikasi"
+                        tooltip="Panduan Aplikasi"
+                    >
+                        <BookOpen class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <span>Panduan Aplikasi</span>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                    <SidebarMenuButton 
                         @click="installPwa"
                         class="text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50 font-medium transition-colors cursor-pointer"
                         title="Install / Pasang Aplikasi Simonitorguru di HP"
+                        tooltip="Install Aplikasi"
                     >
                         <Smartphone class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                         <span>Install Aplikasi</span>

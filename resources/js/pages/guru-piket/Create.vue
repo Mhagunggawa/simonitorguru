@@ -42,6 +42,8 @@ const props = defineProps<{
     isTerlambat: boolean;
     existingPhotoUrl?: string | null;
     existingPhotoNote?: string | null;
+    piketWaktuMulai?: string | null;
+    piketWaktuSelesai?: string | null;
 }>();
 
 onMounted(() => {
@@ -388,13 +390,16 @@ const submit = () => {
             <!-- Informasi Piket Header Bar -->
             <div class="mb-6 p-4 bg-muted/40 rounded-xl border border-border flex flex-wrap items-center justify-between gap-3">
                 <div class="space-y-1">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-primary/10 text-primary font-bold text-sm">
                             {{ currentJam.urutan_jam }}
                         </span>
                         <h3 class="font-bold text-base sm:text-lg">Jam ke-{{ currentJam.urutan_jam }}</h3>
                         <span class="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium">
-                            {{ currentJam.waktu_mulai.substring(0,5) }} - {{ currentJam.waktu_selesai.substring(0,5) }} WIB
+                            KBM: {{ currentJam.waktu_mulai.substring(0,5) }} - {{ currentJam.waktu_selesai.substring(0,5) }} WIB
+                        </span>
+                        <span v-if="piketWaktuSelesai" class="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800">
+                            Batas Piket: s/d {{ piketWaktuSelesai.substring(0,5) }} WIB
                         </span>
                     </div>
                     <div class="text-xs sm:text-sm text-muted-foreground">

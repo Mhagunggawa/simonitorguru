@@ -46,35 +46,46 @@ class PelaporanPiketController extends Controller
             $canAjukanIzinSakit = !in_array($todayPiket->status, ['Izin', 'Sakit', 'Hadir']) && $todayPiket->rekapKehadirans->count() === 0;
         }
 
-        // Filter out jam_pelajarans that are already fully reported
+        // Update status Hadir jika sudah ada rekap kelas
         foreach ($jadwalPikets as $jp) {
-            // Update / sync status dinamis jika ada
             if ($jp->rekapKehadirans->count() > 0 && $jp->status !== 'Hadir') {
                 $jp->update(['status' => 'Hadir']);
             }
 
             $hariPiket = Carbon::parse($jp->tanggal_piket)->locale('id')->isoFormat('dddd');
-            $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $jp->id)->pluck('jadwal_mapel_id');
-            
-            $jp->setRelation('jamPelajarans', $jp->jamPelajarans->filter(function($jam) use ($jp, $hariPiket, $reportedMapelIds) {
-                $unreportedCount = JadwalMapel::where('hari', $hariPiket)
+
+            // Rentang waktu piket secara keseluruhan (dari jam pertama sampai jam terakhir)
+            $jp->piket_waktu_mulai = $jp->jamPelajarans->min('waktu_mulai');
+            $jp->piket_waktu_selesai = $jp->jamPelajarans->max('waktu_selesai');
+
+            // Hitung status dan jumlah kelas per jam pelajaran tanpa membuang jam pelajaran dari jadwal
+            $jp->jamPelajarans->each(function($jam) use ($jp, $hariPiket) {
+                $mapelIds = JadwalMapel::where('hari', $hariPiket)
                     ->whereHas('jamPelajarans', function($q) use ($jam) {
                         $q->where('jam_pelajarans.id', $jam->id);
                     })
                     ->whereHas('kelas.jurusan.titiks', function($q) use ($jp) {
                         $q->where('titiks.id', $jp->titik_id);
                     })
-                    ->whereNotIn('id', $reportedMapelIds)
-                    ->count();
-                
-                return $unreportedCount > 0;
-            })->values());
-        }
+                    ->pluck('id')
+                    ->toArray();
 
-        // Pertahankan jadwal yang masih memiliki jam kelas untuk dilaporkan ATAU yang berstatus Izin / Sakit
-        $jadwalPikets = $jadwalPikets->filter(function($jp) {
-            return in_array($jp->status, ['Izin', 'Sakit']) || $jp->jamPelajarans->count() > 0;
-        })->values();
+                $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $jp->id)
+                    ->where('jam_pelajaran_id', $jam->id)
+                    ->pluck('jadwal_mapel_id')
+                    ->toArray();
+
+                $totalClasses = count($mapelIds);
+                $reportedCount = count(array_intersect($mapelIds, $reportedMapelIds));
+                $unreportedCount = max(0, $totalClasses - $reportedCount);
+
+                $jam->total_classes = $totalClasses;
+                $jam->reported_classes = $reportedCount;
+                $jam->unreported_classes = $unreportedCount;
+                $jam->is_completed = ($totalClasses > 0 && $unreportedCount === 0);
+                $jam->has_no_classes = ($totalClasses === 0);
+            });
+        }
 
         return Inertia::render('guru-piket/Index', [
             'jadwalPikets' => $jadwalPikets,
@@ -106,8 +117,12 @@ class PelaporanPiketController extends Controller
 
         $now = Carbon::now();
         
-        $mulaiStr = strlen($currentJam->waktu_mulai) <= 5 ? $currentJam->waktu_mulai . ':00' : $currentJam->waktu_mulai;
-        $selesaiStr = strlen($currentJam->waktu_selesai) <= 5 ? $currentJam->waktu_selesai . ':00' : $currentJam->waktu_selesai;
+        // Batas waktu piket dihitung secara keseluruhan berdasarkan jadwal piket
+        $piketMulai = $jadwalPiket->jamPelajarans->min('waktu_mulai') ?? $currentJam->waktu_mulai;
+        $piketSelesai = $jadwalPiket->jamPelajarans->max('waktu_selesai') ?? $currentJam->waktu_selesai;
+
+        $mulaiStr = strlen($piketMulai) <= 5 ? $piketMulai . ':00' : $piketMulai;
+        $selesaiStr = strlen($piketSelesai) <= 5 ? $piketSelesai . ':00' : $piketSelesai;
         
         $startTime = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $mulaiStr);
         $endTime = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $selesaiStr);
@@ -134,7 +149,7 @@ class PelaporanPiketController extends Controller
             $isTerlambat = true;
         } else if ($now->lessThan($startTime)) {
             // Hanya validasi jika waktu belum dimulai
-            return redirect()->route('pelaporan-piket.index')->with('error', 'Waktu pengisian laporan untuk jam ini belum dimulai.');
+            return redirect()->route('pelaporan-piket.index')->with('error', 'Waktu pengisian laporan untuk jadwal piket ini belum dimulai.');
         }
 
         // Ambil hari berdasarkan tanggal_piket
@@ -151,7 +166,9 @@ class PelaporanPiketController extends Controller
             });
 
         $totalClasses = $baseQuery->count();
-        $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)->pluck('jadwal_mapel_id');
+        $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)
+            ->where('jam_pelajaran_id', $jamPelajaranId)
+            ->pluck('jadwal_mapel_id');
         $jadwalMapels = $baseQuery->whereNotIn('id', $reportedMapelIds)->get();
 
         // Cek apakah sudah ada foto dokumentasi yang diambil sebelumnya untuk jadwal piket ini / hari ini
@@ -199,6 +216,8 @@ class PelaporanPiketController extends Controller
             'isTerlambat' => $isTerlambat,
             'existingPhotoUrl' => $existingPhotoUrl,
             'existingPhotoNote' => $existingPhotoNote,
+            'piketWaktuMulai' => $piketMulai,
+            'piketWaktuSelesai' => $piketSelesai,
         ]);
     }
 
@@ -216,8 +235,13 @@ class PelaporanPiketController extends Controller
         }
 
         $currentTime = Carbon::now();
-        $mulaiStr = strlen($currentJam->waktu_mulai) <= 5 ? $currentJam->waktu_mulai . ':00' : $currentJam->waktu_mulai;
-        $selesaiStr = strlen($currentJam->waktu_selesai) <= 5 ? $currentJam->waktu_selesai . ':00' : $currentJam->waktu_selesai;
+
+        // Batas waktu piket dihitung secara keseluruhan berdasarkan jadwal piket
+        $piketMulai = $jadwalPiket->jamPelajarans->min('waktu_mulai') ?? $currentJam->waktu_mulai;
+        $piketSelesai = $jadwalPiket->jamPelajarans->max('waktu_selesai') ?? $currentJam->waktu_selesai;
+
+        $mulaiStr = strlen($piketMulai) <= 5 ? $piketMulai . ':00' : $piketMulai;
+        $selesaiStr = strlen($piketSelesai) <= 5 ? $piketSelesai . ':00' : $piketSelesai;
 
         $waktuMulai = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $mulaiStr);
         $waktuSelesai = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $selesaiStr);
@@ -235,7 +259,7 @@ class PelaporanPiketController extends Controller
             }
             $isTerlambat = true;
         } else if ($currentTime->lessThan($waktuMulai)) {
-             return back()->withErrors(['error' => 'Waktu pelaporan belum dimulai.']);
+             return back()->withErrors(['error' => 'Waktu pelaporan jadwal piket belum dimulai.']);
         }
 
         // Cari foto dokumentasi yang sudah ada untuk jadwal piket ini / hari ini
@@ -286,6 +310,7 @@ class PelaporanPiketController extends Controller
             \Illuminate\Support\Facades\DB::transaction(function() use ($request, $jadwalPiket, $path, $isTerlambat) {
                 foreach ($request->reports as $reportItem) {
                     $alreadyReported = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)
+                        ->where('jam_pelajaran_id', $request->jam_pelajaran_id)
                         ->where('jadwal_mapel_id', $reportItem['jadwal_mapel_id'])
                         ->first();
 
@@ -324,7 +349,8 @@ class PelaporanPiketController extends Controller
                     'required',
                     'exists:jadwal_mapels,id',
                     Rule::unique('rekap_kehadirans')->where(function ($query) use ($request) {
-                        return $query->where('jadwal_piket_id', $request->jadwal_piket_id);
+                        return $query->where('jadwal_piket_id', $request->jadwal_piket_id)
+                                     ->where('jam_pelajaran_id', $request->jam_pelajaran_id);
                     })
                 ],
                 'status_kehadiran' => 'required|in:Hadir,Izin,Sakit,Alpha',
@@ -370,7 +396,9 @@ class PelaporanPiketController extends Controller
                 $q->where('titiks.id', $jadwalPiket->titik_id);
             });
         
-        $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $request->jadwal_piket_id)->pluck('jadwal_mapel_id');
+        $reportedMapelIds = RekapKehadiran::where('jadwal_piket_id', $request->jadwal_piket_id)
+            ->where('jam_pelajaran_id', $request->jam_pelajaran_id)
+            ->pluck('jadwal_mapel_id');
         $unreportedCount = $baseQuery->whereNotIn('id', $reportedMapelIds)->count();
 
         if ($unreportedCount == 0) {
