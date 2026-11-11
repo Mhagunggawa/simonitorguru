@@ -17,10 +17,27 @@ class AbsensiGms extends Model
         'tanggal',
         'waktu_absen',
         'status',
+        'is_terlambat',
         'foto_bukti',
         'keterangan',
         'confirmed_by',
     ];
+
+    protected $casts = [
+        'is_terlambat' => 'boolean',
+    ];
+
+    protected $appends = [
+        'display_status',
+    ];
+
+    public function getDisplayStatusAttribute(): string
+    {
+        if ($this->status === 'Hadir' && ($this->is_terlambat || str_contains($this->keterangan ?? '', 'Terlambat'))) {
+            return 'Hadir (Terlambat)';
+        }
+        return $this->status ?: 'Hadir';
+    }
 
     public function user()
     {

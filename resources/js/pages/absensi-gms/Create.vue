@@ -33,6 +33,15 @@ const props = defineProps<{
     alreadySubmitted: boolean;
     currentDate: string;
     hasJadwal: boolean;
+    pengaturan?: {
+        waktu_mulai: string;
+        waktu_selesai: string;
+        jam_normal_mulai?: string | null;
+        jam_normal_selesai?: string | null;
+        jam_terlambat_mulai?: string | null;
+        jam_terlambat_selesai?: string | null;
+    };
+    isTerlambatNow?: boolean;
 }>();
 
 defineOptions({
@@ -409,7 +418,7 @@ onBeforeUnmount(() => {
                             class="text-sm text-amber-600 dark:text-amber-500 mt-1"
                         >
                             Absensi GMS hanya dapat dilakukan antara pukul
-                            07:15 - 08:00.
+                            {{ pengaturan?.waktu_mulai || '07:15' }} - {{ pengaturan?.waktu_selesai || '08:00' }} WIB.
                         </p>
 
                         <p
@@ -437,6 +446,32 @@ onBeforeUnmount(() => {
                     @submit.prevent="submit"
                     class="space-y-6"
                 >
+
+                    <!-- Status Kategori Waktu Kedatangan -->
+                    <div
+                        v-if="isTerlambatNow"
+                        class="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 rounded-xl border border-amber-200 dark:border-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-2xs"
+                    >
+                        <div class="flex items-center gap-2">
+                            <Clock class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span>Waktu datang saat ini masuk kategori:</span>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-900/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 text-[11px] self-start sm:self-auto">
+                            Hadir (Terlambat)
+                        </span>
+                    </div>
+                    <div
+                        v-else
+                        class="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 rounded-xl border border-emerald-200 dark:border-emerald-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 shadow-2xs"
+                    >
+                        <div class="flex items-center gap-2">
+                            <CheckCircle2 class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Waktu datang saat ini masuk kategori:</span>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-900/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-[11px] self-start sm:self-auto">
+                            Hadir (Tepat Waktu)
+                        </span>
+                    </div>
 
                     <!-- INFO -->
                     <div

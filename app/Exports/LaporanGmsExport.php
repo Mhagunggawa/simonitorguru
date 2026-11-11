@@ -56,7 +56,22 @@ class LaporanGmsExport implements FromCollection, WithHeadings, WithMapping
             }
 
             if ($this->request->filled('status') && $this->request->input('status') !== 'semua') {
-                $query->where('status', $this->request->input('status'));
+                if ($this->request->input('status') === 'Hadir (Terlambat)') {
+                    $query->where('status', 'Hadir')->where(function($q) {
+                        $q->where('is_terlambat', true)
+                          ->orWhere('keterangan', 'like', '%Terlambat%');
+                    });
+                } else if ($this->request->input('status') === 'Hadir') {
+                    $query->where('status', 'Hadir')->where(function($q) {
+                        $q->where('is_terlambat', false)
+                          ->where(function($sq) {
+                              $sq->whereNull('keterangan')
+                                 ->orWhere('keterangan', 'not like', '%Terlambat%');
+                          });
+                    });
+                } else {
+                    $query->where('status', $this->request->input('status'));
+                }
             }
 
             if ($this->request->filled('start_date')) {
@@ -84,11 +99,13 @@ class LaporanGmsExport implements FromCollection, WithHeadings, WithMapping
 
     public function map($row): array
     {
+        $statusDisplay = $row->display_status ?? (($row->status === 'Hadir' && ($row->is_terlambat || str_contains($row->keterangan ?? '', 'Terlambat'))) ? 'Hadir (Terlambat)' : $row->status);
+
         return [
             $row->tanggal ?? '-',
             $row->user->name ?? '-',
             $row->waktu_absen ?? '-',
-            $row->status ?? '-',
+            $statusDisplay ?? '-',
             $row->keterangan ?? ($row->foto_bukti ? 'Absen Mandiri (Foto)' : '-')
         ];
     }

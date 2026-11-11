@@ -24,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('pelaporan-piket/{id}/create', [\App\Http\Controllers\PelaporanPiketController::class, 'create'])->name('pelaporan-piket.create');
         Route::post('pelaporan-piket', [\App\Http\Controllers\PelaporanPiketController::class, 'store'])->name('pelaporan-piket.store');
         Route::post('pelaporan-piket/{id}/izin-sakit', [\App\Http\Controllers\PelaporanPiketController::class, 'ajukanIzinSakit'])->name('pelaporan-piket.izin-sakit');
+        Route::post('pelaporan-piket/{id}/minta-izin-susulan', [\App\Http\Controllers\PelaporanPiketController::class, 'mintaIzinSusulan'])->name('pelaporan-piket.minta-izin-susulan');
         Route::get('absensi-gms/create', [\App\Http\Controllers\AbsensiGmsController::class, 'create'])->name('absensi-gms.create');
         Route::post('absensi-gms', [\App\Http\Controllers\AbsensiGmsController::class, 'store'])->name('absensi-gms.store');
     });
@@ -59,6 +60,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
         Route::get('jadwal-mapel/fetch', [\App\Http\Controllers\JadwalMapelController::class, 'fetch'])->name('jadwal-mapel.fetch');
         Route::resource('jadwal-mapel', \App\Http\Controllers\JadwalMapelController::class)->only(['index', 'create', 'store']);
+        Route::post('jadwal-piket/pengaturan', [\App\Http\Controllers\JadwalPiketController::class, 'updatePengaturan'])->name('jadwal-piket.pengaturan.update');
         Route::resource('jadwal-piket', \App\Http\Controllers\JadwalPiketController::class)->parameters([
             'jadwal-piket' => 'jadwalPiket'
         ]);

@@ -83,8 +83,15 @@ class IzinPiketController extends Controller
     public function approve(Request $request, $id)
     {
         $izin = IzinPiket::findOrFail($id);
+
+        // Setujui izin ini dan seluruh izin pending pada jadwal piket yang sama
+        IzinPiket::where('jadwal_piket_id', $izin->jadwal_piket_id)
+            ->where('guru_piket_id', $izin->guru_piket_id)
+            ->where('status', 'pending')
+            ->update(['status' => 'approved']);
+
         $izin->update(['status' => 'approved']);
         
-        return redirect()->back()->with('success', 'Izin pelaporan susulan berhasil disetujui.');
+        return redirect()->back()->with('success', 'Izin pelaporan susulan untuk seluruh jam jadwal piket ini berhasil disetujui.');
     }
 }

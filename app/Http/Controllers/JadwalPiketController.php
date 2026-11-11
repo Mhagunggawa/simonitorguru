@@ -6,6 +6,7 @@ use App\Models\JadwalPiket;
 use App\Models\Titik;
 use App\Models\User;
 use App\Models\JamPelajaran;
+use App\Models\PengaturanPiket;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -61,6 +62,8 @@ class JadwalPiketController extends Controller
             'minggu' => (int) $this->calculateWeekOfMonth($now),
         ];
 
+        $pengaturan = PengaturanPiket::getPengaturan();
+
         return Inertia::render('jadwal-piket/Index', [
             'jadwalPikets' => $jadwalPikets,
             'filters' => $this->getFilters($request),
@@ -68,7 +71,34 @@ class JadwalPiketController extends Controller
             'activePeriodInfo' => $activePeriodInfo,
             'currentWeekInfo' => $currentWeekInfo,
             'totalPiketAll' => JadwalPiket::count(),
+            'pengaturan' => [
+                'waktu_mulai' => $pengaturan->waktu_mulai ? substr($pengaturan->waktu_mulai, 0, 5) : '06:30',
+                'waktu_selesai' => $pengaturan->waktu_selesai ? substr($pengaturan->waktu_selesai, 0, 5) : '16:00',
+                'keterangan' => $pengaturan->keterangan,
+            ],
         ]);
+    }
+
+    public function updatePengaturan(Request $request)
+    {
+        $validated = $request->validate([
+            'waktu_mulai' => ['required', 'date_format:H:i'],
+            'waktu_selesai' => ['required', 'date_format:H:i', 'after:waktu_mulai'],
+            'keterangan' => ['nullable', 'string', 'max:255'],
+        ], [
+            'waktu_mulai.required' => 'Jam mulai pelaporan wajib diisi.',
+            'waktu_selesai.required' => 'Jam batas akhir pelaporan wajib diisi.',
+            'waktu_selesai.after' => 'Jam batas akhir pelaporan harus setelah jam mulai.',
+        ]);
+
+        $pengaturan = PengaturanPiket::getPengaturan();
+        $pengaturan->update([
+            'waktu_mulai' => $validated['waktu_mulai'] . ':00',
+            'waktu_selesai' => $validated['waktu_selesai'] . ':00',
+            'keterangan' => $validated['keterangan'] ?? null,
+        ]);
+
+        return redirect()->route('jadwal-piket.index')->with('success', 'Pengaturan batas waktu pelaporan piket berhasil diperbarui.');
     }
 
     public function create()

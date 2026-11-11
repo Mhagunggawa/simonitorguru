@@ -35,7 +35,8 @@ interface TeacherItem {
     tipe_guru: string;
     status_pegawai: string;
     is_confirmed: boolean;
-    status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpha' | 'Belum Absen';
+    status: 'Hadir' | 'Hadir (Terlambat)' | 'Izin' | 'Sakit' | 'Alpha' | 'Belum Absen';
+    is_terlambat?: boolean;
     waktu_absen: string;
     foto_bukti: string | null;
     keterangan: string | null;
@@ -456,6 +457,13 @@ const confirmBulkAlpha = () => {
                                     <span>Hadir</span>
                                 </span>
                                 <span 
+                                    v-else-if="teacher.status === 'Hadir (Terlambat)'"
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                                >
+                                    <Clock class="w-3.5 h-3.5" />
+                                    <span>Hadir (Terlambat)</span>
+                                </span>
+                                <span 
                                     v-else-if="teacher.status === 'Izin'"
                                     class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
                                 >
@@ -576,6 +584,12 @@ const confirmBulkAlpha = () => {
                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300/80"
                             >
                                 <Check class="w-3 h-3" /> Hadir
+                            </span>
+                            <span 
+                                v-else-if="teacher.status === 'Hadir (Terlambat)'"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/80"
+                            >
+                                <Clock class="w-3 h-3" /> Hadir (Terlambat)
                             </span>
                             <span 
                                 v-else-if="teacher.status === 'Izin'"

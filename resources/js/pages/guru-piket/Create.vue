@@ -19,7 +19,8 @@ import {
     BookOpen,
     UserCheck,
     AlertCircle,
-    Info
+    Info,
+    Clock
 } from '@lucide/vue';
 import { ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import Swal from 'sweetalert2';
@@ -44,9 +45,64 @@ const props = defineProps<{
     existingPhotoNote?: string | null;
     piketWaktuMulai?: string | null;
     piketWaktuSelesai?: string | null;
+    deadline?: string;
+    batasWaktuStr?: string;
+    serverTime?: string;
+    isBelumMulai?: boolean;
+    jamMulaiStr?: string;
 }>();
 
+const isTimeExpired = ref(false);
+const remainingSeconds = ref<number | null>(null);
+const timerInterval = ref<any>(null);
+
+const formatRemainingTime = computed(() => {
+    if (remainingSeconds.value === null) return '--:--:--';
+    if (remainingSeconds.value <= 0) return '00:00:00 (Waktu Habis)';
+    const hours = Math.floor(remainingSeconds.value / 3600);
+    const minutes = Math.floor((remainingSeconds.value % 3600) / 60);
+    const seconds = remainingSeconds.value % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+});
+
+const updateCountdown = () => {
+    if (!props.deadline) return;
+    const now = new Date();
+    const end = new Date(props.deadline);
+    const diff = Math.floor((end.getTime() - now.getTime()) / 1000);
+
+    if (diff <= 0) {
+        remainingSeconds.value = 0;
+        if (!isTimeExpired.value) {
+            isTimeExpired.value = true;
+            if (timerInterval.value) {
+                clearInterval(timerInterval.value);
+                timerInterval.value = null;
+            }
+            
+            Swal.fire({
+                title: 'Batas Waktu Pelaporan Berakhir!',
+                html: `Batas waktu pengisian absensi piket telah berakhir pada pukul <b>${props.batasWaktuStr || '16:00 WIB'}</b>.<br><br><span class="text-xs text-muted-foreground">Form pelaporan telah dinonaktifkan. Silakan ajukan permohonan izin susulan ke Wakasek untuk mendapatkan akses kembali.</span>`,
+                icon: 'warning',
+                confirmButtonText: 'Kembali ke Jadwal Piket',
+                confirmButtonColor: '#d97706',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+            }).then(() => {
+                router.visit('/pelaporan-piket');
+            });
+        }
+    } else {
+        remainingSeconds.value = diff;
+    }
+};
+
 onMounted(() => {
+    if (props.deadline) {
+        updateCountdown();
+        timerInterval.value = setInterval(updateCountdown, 1000);
+    }
+
     if (props.jadwalMapels.length === 0) {
         let textMsg = 'Semua kelas pada shift ini sudah dilaporkan!';
         if (props.totalClasses === 0) {
@@ -61,6 +117,13 @@ onMounted(() => {
         }).then(() => {
             router.visit('/pelaporan-piket');
         });
+    }
+});
+
+onBeforeUnmount(() => {
+    if (timerInterval.value) {
+        clearInterval(timerInterval.value);
+        timerInterval.value = null;
     }
 });
 
@@ -305,6 +368,25 @@ const getStatusBadgeStyle = (status: string) => {
 };
 
 const submit = () => {
+    if (props.isBelumMulai) {
+        Swal.fire({
+            title: 'Jam Pelajaran Belum Mulai!',
+            text: `Jam ke-${props.currentJam.urutan_jam} baru dimulai pada pukul ${props.jamMulaiStr || props.currentJam.waktu_mulai.substring(0, 5) + ' WIB'}. Form laporan belum dapat disimpan sebelum jam pelajaran dimulai.`,
+            icon: 'info',
+            confirmButtonColor: '#3b82f6'
+        });
+        return;
+    }
+
+    if (isTimeExpired.value) {
+        Swal.fire({
+            title: 'Batas Waktu Telah Berakhir!',
+            text: 'Waktu pengisian laporan piket telah melewati batas waktu yang ditentukan. Silakan ajukan izin susulan ke Wakasek.',
+            icon: 'warning'
+        });
+        return;
+    }
+
     // 1. Validasi: semua kelas harus memiliki status kehadiran
     const unfilledIndex = form.reports.findIndex(r => !r.status_kehadiran);
     if (unfilledIndex !== -1) {
@@ -413,6 +495,59 @@ const submit = () => {
                         {{ form.reports.length }} Kelas Dipantau
                     </span>
                 </div>
+            </div>
+
+            <!-- Banner Batas Waktu & Live Countdown Timer -->
+            <div 
+                v-if="deadline" 
+                class="mb-6 p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs transition-colors"
+                :class="isTimeExpired ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200' : (remainingSeconds !== null && remainingSeconds < 600 ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 animate-pulse' : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200')"
+            >
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 rounded-xl shrink-0" :class="isTimeExpired ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300' : (remainingSeconds !== null && remainingSeconds < 600 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300')">
+                        <Clock class="w-5 h-5" />
+                    </div>
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wider opacity-80">Batas Waktu Pelaporan Piket</div>
+                        <div class="text-sm font-bold">
+                            Batas Akhir: {{ batasWaktuStr || '16:00 WIB' }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2.5 sm:self-center">
+                    <span class="text-xs font-medium opacity-80">Sisa Waktu:</span>
+                    <div 
+                        class="px-3.5 py-1.5 rounded-lg font-mono font-bold text-sm tracking-wider shadow-xs"
+                        :class="isTimeExpired ? 'bg-rose-600 text-white' : (remainingSeconds !== null && remainingSeconds < 600 ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white')"
+                    >
+                        {{ formatRemainingTime }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Banner Jam Pelajaran Belum Mulai -->
+            <div 
+                v-if="isBelumMulai" 
+                class="mb-6 p-4 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/70 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs"
+            >
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300 shrink-0">
+                        <Clock class="w-5 h-5" />
+                    </div>
+                    <div>
+                        <div class="text-xs font-semibold uppercase tracking-wider opacity-80">Status Waktu Pelajaran</div>
+                        <div class="text-sm font-bold">
+                            Jam ke-{{ currentJam.urutan_jam }} Belum Dimulai
+                        </div>
+                        <div class="text-xs opacity-85 mt-0.5">
+                            Jam pelajaran ini baru dimulai pada pukul <strong>{{ currentJam.waktu_mulai.substring(0, 5) }} WIB</strong>. Batas waktu pelaporan s/d pukul <strong>{{ batasWaktuStr || '16:00 WIB' }}</strong>.
+                        </div>
+                    </div>
+                </div>
+                <span class="px-3 py-1 rounded-full bg-blue-200/80 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs font-bold shrink-0 self-start sm:self-center">
+                    Belum Mulai
+                </span>
             </div>
 
             <form @submit.prevent="submit" class="space-y-6">
@@ -691,11 +826,16 @@ const submit = () => {
                     </div>
                     <Button 
                         type="submit" 
-                        :disabled="form.processing || (!isTerlambat && !existingPhotoUrl && !form.foto_dokumentasi)" 
+                        :disabled="form.processing || isTimeExpired || isBelumMulai || (!isTerlambat && !existingPhotoUrl && !form.foto_dokumentasi)" 
                         class="w-full sm:w-auto px-7 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-2 font-semibold text-sm cursor-pointer disabled:opacity-50"
                     >
-                        <CheckCircle2 class="w-4 h-4" v-if="!form.processing" />
-                        {{ form.processing ? 'Menyimpan Semua...' : `Simpan Semua Laporan (${form.reports.length} Kelas)` }}
+                        <Clock class="w-4 h-4" v-if="isBelumMulai" />
+                        <Lock class="w-4 h-4" v-else-if="isTimeExpired" />
+                        <CheckCircle2 class="w-4 h-4" v-else-if="!form.processing" />
+                        <span v-if="isBelumMulai">Jam Pelajaran Belum Mulai</span>
+                        <span v-else-if="isTimeExpired">Batas Waktu Berakhir (Terkunci)</span>
+                        <span v-else-if="form.processing">Menyimpan Semua...</span>
+                        <span v-else>Simpan Semua Laporan ({{ form.reports.length }} Kelas)</span>
                     </Button>
                 </div>
             </form>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\JadwalPiket;
 use App\Models\JadwalMapel;
 use App\Models\RekapKehadiran;
+use App\Models\PengaturanPiket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -18,14 +19,28 @@ class PelaporanPiketController extends Controller
 {
     public function index()
     {
+        $pengaturan = PengaturanPiket::getPengaturan();
+        $cutoffTimeStr = $pengaturan->waktu_selesai ?: '16:00:00';
+        if (strlen($cutoffTimeStr) <= 5) $cutoffTimeStr .= ':00';
+
+        $userPiketIdsWithIzin = IzinPiket::where('guru_piket_id', auth()->id())->pluck('jadwal_piket_id');
+
         $jadwalPikets = JadwalPiket::with(['jamPelajarans', 'titik', 'rekapKehadirans'])
             ->where('guru_piket_id', auth()->id())
-            ->where(function($q) {
+            ->where(function($q) use ($userPiketIdsWithIzin) {
                 $q->whereDate('tanggal_piket', today())
-                  ->orWhereIn('id', IzinPiket::where('guru_piket_id', auth()->id())
-                                      ->where('status', 'approved')
-                                      ->pluck('jadwal_piket_id'));
+                  ->orWhereIn('id', $userPiketIdsWithIzin)
+                  ->orWhere(function($sub) {
+                      // Jadwal dalam 7 hari terakhir yang belum tuntas dilaporkan
+                      $sub->whereDate('tanggal_piket', '>=', now()->subDays(7))
+                          ->whereDate('tanggal_piket', '<=', today())
+                          ->where(function($s) {
+                              $s->whereNull('status')
+                                ->orWhereNotIn('status', ['Hadir', 'Izin', 'Sakit']);
+                          });
+                  });
             })
+            ->orderBy('tanggal_piket', 'desc')
             ->get();
 
         // Cari jadwal piket hari ini untuk opsi pengajuan Izin / Sakit
@@ -54,9 +69,21 @@ class PelaporanPiketController extends Controller
 
             $hariPiket = Carbon::parse($jp->tanggal_piket)->locale('id')->isoFormat('dddd');
 
-            // Rentang waktu piket secara keseluruhan (dari jam pertama sampai jam terakhir)
+            // Rentang waktu piket secara keseluruhan
             $jp->piket_waktu_mulai = $jp->jamPelajarans->min('waktu_mulai');
-            $jp->piket_waktu_selesai = $jp->jamPelajarans->max('waktu_selesai');
+            $jp->piket_waktu_selesai = substr($cutoffTimeStr, 0, 5);
+
+            // Cek apakah jadwal ini sudah melewati batas waktu pelaporan
+            $deadline = Carbon::parse($jp->tanggal_piket . ' ' . $cutoffTimeStr);
+            $jp->is_expired = now()->greaterThan($deadline);
+            $jp->batas_waktu_pelaporan = substr($cutoffTimeStr, 0, 5);
+
+            // Cek permohonan izin susulan
+            $izins = IzinPiket::where('jadwal_piket_id', $jp->id)
+                ->where('guru_piket_id', auth()->id())
+                ->get();
+            $jp->has_approved_izin = $izins->where('status', 'approved')->isNotEmpty();
+            $jp->has_pending_izin = $izins->where('status', 'pending')->isNotEmpty();
 
             // Hitung status dan jumlah kelas per jam pelajaran tanpa membuang jam pelajaran dari jadwal
             $jp->jamPelajarans->each(function($jam) use ($jp, $hariPiket) {
@@ -94,6 +121,11 @@ class PelaporanPiketController extends Controller
             'activePiketStatus' => $activePiketStatus,
             'activePiketKeterangan' => $activePiketKeterangan,
             'serverTime' => now()->format('Y-m-d H:i:s'),
+            'pengaturan' => [
+                'waktu_mulai' => $pengaturan->waktu_mulai ? substr($pengaturan->waktu_mulai, 0, 5) : '06:30',
+                'waktu_selesai' => $pengaturan->waktu_selesai ? substr($pengaturan->waktu_selesai, 0, 5) : '16:00',
+                'keterangan' => $pengaturan->keterangan,
+            ],
         ]);
     }
 
@@ -117,39 +149,38 @@ class PelaporanPiketController extends Controller
 
         $now = Carbon::now();
         
-        // Batas waktu piket dihitung secara keseluruhan berdasarkan jadwal piket
-        $piketMulai = $jadwalPiket->jamPelajarans->min('waktu_mulai') ?? $currentJam->waktu_mulai;
-        $piketSelesai = $jadwalPiket->jamPelajarans->max('waktu_selesai') ?? $currentJam->waktu_selesai;
+        $pengaturan = PengaturanPiket::getPengaturan();
+        $cutoffTimeStr = $pengaturan->waktu_selesai ?: '16:00:00';
+        if (strlen($cutoffTimeStr) <= 5) $cutoffTimeStr .= ':00';
 
-        $mulaiStr = strlen($piketMulai) <= 5 ? $piketMulai . ':00' : $piketMulai;
-        $selesaiStr = strlen($piketSelesai) <= 5 ? $piketSelesai . ':00' : $piketSelesai;
+        // Jam mulai mengikuti jam pelajaran spesifik ini
+        $jamMulai = $currentJam->waktu_mulai;
+        $mulaiStr = strlen($jamMulai) <= 5 ? $jamMulai . ':00' : $jamMulai;
         
         $startTime = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $mulaiStr);
-        $endTime = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $selesaiStr);
+        $endTime = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $cutoffTimeStr);
+
+        $isBelumMulai = $now->lessThan($startTime);
 
         // Check if report time has passed
         $isTerlambat = false;
         if ($now->greaterThan($endTime)) {
             $izin = IzinPiket::where('jadwal_piket_id', $jadwalPiket->id)
-                ->where('jam_pelajaran_id', $jamPelajaranId)
                 ->where('guru_piket_id', auth()->id())
+                ->where('status', 'approved')
                 ->first();
 
-            if (!$izin || $izin->status !== 'approved') {
-                if (!$izin) {
-                    IzinPiket::create([
-                        'jadwal_piket_id' => $jadwalPiket->id,
-                        'jam_pelajaran_id' => $jamPelajaranId,
-                        'guru_piket_id' => auth()->id(),
-                        'status' => 'pending',
-                    ]);
-                }
-                return redirect()->route('pelaporan-piket.index')->with('error', 'Anda terlambat melakukan pelaporan. Permohonan izin telah dikirim. Silakan hubungi Wakasek untuk mendapatkan akses.');
+            if (!$izin) {
+                IzinPiket::firstOrCreate([
+                    'jadwal_piket_id' => $jadwalPiket->id,
+                    'jam_pelajaran_id' => $jamPelajaranId,
+                    'guru_piket_id' => auth()->id(),
+                ], [
+                    'status' => 'pending',
+                ]);
+                return redirect()->route('pelaporan-piket.index')->with('error', 'Waktu pengisian laporan telah melewati batas waktu (' . substr($cutoffTimeStr, 0, 5) . ' WIB). Permohonan izin susulan telah dikirim ke Wakasek.');
             }
             $isTerlambat = true;
-        } else if ($now->lessThan($startTime)) {
-            // Hanya validasi jika waktu belum dimulai
-            return redirect()->route('pelaporan-piket.index')->with('error', 'Waktu pengisian laporan untuk jadwal piket ini belum dimulai.');
         }
 
         // Ambil hari berdasarkan tanggal_piket
@@ -214,10 +245,15 @@ class PelaporanPiketController extends Controller
             'totalClasses' => $totalClasses,
             'currentJam' => $currentJam,
             'isTerlambat' => $isTerlambat,
+            'isBelumMulai' => $isBelumMulai,
+            'jamMulaiStr' => substr($mulaiStr, 0, 5) . ' WIB',
             'existingPhotoUrl' => $existingPhotoUrl,
             'existingPhotoNote' => $existingPhotoNote,
-            'piketWaktuMulai' => $piketMulai,
-            'piketWaktuSelesai' => $piketSelesai,
+            'piketWaktuMulai' => substr($mulaiStr, 0, 5),
+            'piketWaktuSelesai' => substr($cutoffTimeStr, 0, 5),
+            'deadline' => $endTime->toIso8601String(),
+            'batasWaktuStr' => substr($cutoffTimeStr, 0, 5) . ' WIB',
+            'serverTime' => Carbon::now()->toIso8601String(),
         ]);
     }
 
@@ -236,30 +272,30 @@ class PelaporanPiketController extends Controller
 
         $currentTime = Carbon::now();
 
-        // Batas waktu piket dihitung secara keseluruhan berdasarkan jadwal piket
-        $piketMulai = $jadwalPiket->jamPelajarans->min('waktu_mulai') ?? $currentJam->waktu_mulai;
-        $piketSelesai = $jadwalPiket->jamPelajarans->max('waktu_selesai') ?? $currentJam->waktu_selesai;
+        $pengaturan = PengaturanPiket::getPengaturan();
+        $cutoffTimeStr = $pengaturan->waktu_selesai ?: '16:00:00';
+        if (strlen($cutoffTimeStr) <= 5) $cutoffTimeStr .= ':00';
 
-        $mulaiStr = strlen($piketMulai) <= 5 ? $piketMulai . ':00' : $piketMulai;
-        $selesaiStr = strlen($piketSelesai) <= 5 ? $piketSelesai . ':00' : $piketSelesai;
+        $jamMulai = $currentJam->waktu_mulai;
+        $mulaiStr = strlen($jamMulai) <= 5 ? $jamMulai . ':00' : $jamMulai;
 
         $waktuMulai = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $mulaiStr);
-        $waktuSelesai = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $selesaiStr);
+        $waktuSelesai = Carbon::parse($jadwalPiket->tanggal_piket . ' ' . $cutoffTimeStr);
 
         $isTerlambat = false;
         $izin = null;
         if ($currentTime->greaterThan($waktuSelesai)) {
             $izin = IzinPiket::where('jadwal_piket_id', $request->jadwal_piket_id)
-                ->where('jam_pelajaran_id', $request->jam_pelajaran_id)
                 ->where('guru_piket_id', auth()->id())
+                ->where('status', 'approved')
                 ->first();
 
-            if (!$izin || $izin->status !== 'approved') {
-                return back()->withErrors(['error' => 'Waktu pelaporan di luar batas dan izin belum disetujui.']);
+            if (!$izin) {
+                return back()->withErrors(['error' => 'Waktu pelaporan di luar batas (' . substr($cutoffTimeStr, 0, 5) . ' WIB) dan izin belum disetujui.']);
             }
             $isTerlambat = true;
         } else if ($currentTime->lessThan($waktuMulai)) {
-             return back()->withErrors(['error' => 'Waktu pelaporan jadwal piket belum dimulai.']);
+             return back()->withErrors(['error' => 'Jam pelajaran ke-' . $currentJam->urutan_jam . ' belum dimulai (dimulai pukul ' . substr($mulaiStr, 0, 5) . ' WIB).']);
         }
 
         // Cari foto dokumentasi yang sudah ada untuk jadwal piket ini / hari ini
@@ -401,15 +437,75 @@ class PelaporanPiketController extends Controller
             ->pluck('jadwal_mapel_id');
         $unreportedCount = $baseQuery->whereNotIn('id', $reportedMapelIds)->count();
 
-        if ($unreportedCount == 0) {
-            if ($isTerlambat && $izin) {
-                $izin->update(['status' => 'completed']);
+        // Cek apakah seluruh jam pelajaran pada sesi piket ini sudah tuntas dilaporkan
+        $allSessionCompleted = true;
+        foreach ($jadwalPiket->jamPelajarans as $jam) {
+            $baseJamQuery = JadwalMapel::where('hari', $hariPiket)
+                ->whereHas('jamPelajarans', function($q) use ($jam) {
+                    $q->where('jam_pelajarans.id', $jam->id);
+                })
+                ->whereHas('kelas.jurusan.titiks', function($q) use ($jadwalPiket) {
+                    $q->where('titiks.id', $jadwalPiket->titik_id);
+                });
+            
+            $reportedJamIds = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)
+                ->where('jam_pelajaran_id', $jam->id)
+                ->pluck('jadwal_mapel_id');
+            
+            if ($baseJamQuery->whereNotIn('id', $reportedJamIds)->count() > 0) {
+                $allSessionCompleted = false;
+                break;
             }
-            return redirect()->route('pelaporan-piket.index')->with('success', 'Laporan kehadiran berhasil disimpan. Semua kelas untuk jam ini telah selesai dilaporkan.');
+        }
+
+        if ($allSessionCompleted) {
+            if ($isTerlambat) {
+                IzinPiket::where('jadwal_piket_id', $jadwalPiket->id)
+                    ->where('guru_piket_id', auth()->id())
+                    ->update(['status' => 'completed']);
+            }
+            return redirect()->route('pelaporan-piket.index')->with('success', 'Laporan kehadiran berhasil disimpan. Seluruh tugas piket Anda untuk hari ini telah selesai!');
         } else {
             return redirect()->route('pelaporan-piket.index')
-                ->with('success', 'Laporan kehadiran berhasil disimpan. Masih tersisa ' . $unreportedCount . ' kelas lainnya pada jam ini.');
+                ->with('success', 'Laporan kehadiran jam ini berhasil disimpan. Silakan lanjutkan pengisian jam pelajaran berikutnya.');
         }
+    }
+
+    public function mintaIzinSusulan(Request $request, $id)
+    {
+        $jadwalPiket = JadwalPiket::with('jamPelajarans')->findOrFail($id);
+
+        if ($jadwalPiket->guru_piket_id !== auth()->id()) {
+            abort(403, 'Anda tidak memiliki hak akses pada jadwal piket ini.');
+        }
+
+        $hariPiket = Carbon::parse($jadwalPiket->tanggal_piket)->locale('id')->isoFormat('dddd');
+
+        foreach ($jadwalPiket->jamPelajarans as $jam) {
+            $baseQuery = JadwalMapel::where('hari', $hariPiket)
+                ->whereHas('jamPelajarans', function($q) use ($jam) {
+                    $q->where('jam_pelajarans.id', $jam->id);
+                })
+                ->whereHas('kelas.jurusan.titiks', function($q) use ($jadwalPiket) {
+                    $q->where('titiks.id', $jadwalPiket->titik_id);
+                });
+
+            $reportedIds = RekapKehadiran::where('jadwal_piket_id', $jadwalPiket->id)
+                ->where('jam_pelajaran_id', $jam->id)
+                ->pluck('jadwal_mapel_id');
+
+            if ($baseQuery->whereNotIn('id', $reportedIds)->count() > 0) {
+                IzinPiket::firstOrCreate([
+                    'jadwal_piket_id' => $jadwalPiket->id,
+                    'jam_pelajaran_id' => $jam->id,
+                    'guru_piket_id' => auth()->id(),
+                ], [
+                    'status' => 'pending'
+                ]);
+            }
+        }
+
+        return redirect()->route('pelaporan-piket.index')->with('success', 'Permohonan izin susulan berhasil diajukan ke Wakasek.');
     }
 
     public function ajukanIzinSakit(Request $request, $id)

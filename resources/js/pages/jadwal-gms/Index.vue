@@ -41,6 +41,10 @@ const props = defineProps<{
     pengaturan?: {
         waktu_mulai: string;
         waktu_selesai: string;
+        jam_normal_mulai?: string;
+        jam_normal_selesai?: string;
+        jam_terlambat_mulai?: string;
+        jam_terlambat_selesai?: string;
     } | null;
 }>();
 
@@ -73,8 +77,12 @@ const formatTimeForInput = (timeString?: string) => {
 };
 
 const formPengaturan = useForm({
-    waktu_mulai: formatTimeForInput(props.pengaturan?.waktu_mulai) || '07:15',
+    waktu_mulai: formatTimeForInput(props.pengaturan?.waktu_mulai) || '07:00',
     waktu_selesai: formatTimeForInput(props.pengaturan?.waktu_selesai) || '08:00',
+    jam_normal_mulai: formatTimeForInput(props.pengaturan?.jam_normal_mulai) || formatTimeForInput(props.pengaturan?.waktu_mulai) || '07:00',
+    jam_normal_selesai: formatTimeForInput(props.pengaturan?.jam_normal_selesai) || '07:15',
+    jam_terlambat_mulai: formatTimeForInput(props.pengaturan?.jam_terlambat_mulai) || '07:16',
+    jam_terlambat_selesai: formatTimeForInput(props.pengaturan?.jam_terlambat_selesai) || formatTimeForInput(props.pengaturan?.waktu_selesai) || '08:00',
 });
 
 const isDialogOpen = ref(false);
@@ -86,23 +94,19 @@ const submitPengaturan = () => {
             isDialogOpen.value = false;
             Swal.fire({
                 title: 'Berhasil!',
-                text: 'Pengaturan jam absensi GMS berhasil diperbarui.',
+                text: 'Pengaturan jam absensi GMS (Normal & Terlambat) berhasil diperbarui.',
                 icon: 'success',
                 timer: 3000,
                 showConfirmButton: false
             });
         },
         onError: (errors) => {
-            let errorMsg = 'Terjadi kesalahan validasi.';
-            if (errors.waktu_selesai) {
-                errorMsg = errors.waktu_selesai;
-            } else if (errors.waktu_mulai) {
-                errorMsg = errors.waktu_mulai;
-            }
+            const errorMessages = Object.values(errors);
+            const errorMsg = errorMessages.length > 0 ? errorMessages[0] : 'Terjadi kesalahan validasi pengaturan waktu.';
             
             Swal.fire({
-                title: 'Gagal!',
-                text: errorMsg,
+                title: 'Validasi Waktu Gagal!',
+                text: errorMsg as string,
                 icon: 'error',
                 confirmButtonColor: '#3085d6',
             });
@@ -141,39 +145,141 @@ const submitPengaturan = () => {
                         <span class="hidden sm:inline">Pengaturan Jam</span>
                     </Button>
                 </DialogTrigger>
-                <DialogContent class="sm:max-w-[425px]">
+                <DialogContent class="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Pengaturan Waktu Absensi GMS</DialogTitle>
-                        <DialogDescription>
-                            Tentukan batas waktu (jam buka dan tutup) untuk absensi GMS setiap harinya.
+                        <DialogTitle class="text-lg font-bold">Pengaturan Waktu Absensi GMS</DialogTitle>
+                        <DialogDescription class="text-xs">
+                            Atur jam operasional sesi absensi serta rentang waktu kedatangan normal (Hadir) dan terlambat (Hadir Terlambat).
                         </DialogDescription>
                     </DialogHeader>
-                    <div class="grid gap-4 py-4">
-                        <div class="grid grid-cols-4 items-center gap-4">
-                            <label for="waktu_mulai" class="text-right text-sm font-medium">Jam Mulai</label>
-                            <Input 
-                                id="waktu_mulai" 
-                                type="time" 
-                                v-model="formPengaturan.waktu_mulai" 
-                                class="col-span-3" 
-                                required
-                            />
+
+                    <div class="space-y-4 py-3">
+                        <!-- BAGIAN 1: SESI UTAMA (JAM MULAI & JAM TUTUP) -->
+                        <div class="p-3.5 rounded-xl border border-sidebar-border/80 bg-muted/30 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    1. Batas Operasional Sesi GMS
+                                </span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                                    Jam Sesi
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1.5">
+                                    <label for="waktu_mulai" class="text-xs font-semibold text-foreground">Jam Mulai (Buka Sesi)</label>
+                                    <Input 
+                                        id="waktu_mulai" 
+                                        type="time" 
+                                        v-model="formPengaturan.waktu_mulai" 
+                                        class="h-9 text-sm" 
+                                        required
+                                    />
+                                    <p class="text-[10px] text-muted-foreground">Waktu awal sesi absensi dibuka</p>
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label for="waktu_selesai" class="text-xs font-semibold text-foreground">Jam Tutup (Selesai Sesi)</label>
+                                    <Input 
+                                        id="waktu_selesai" 
+                                        type="time" 
+                                        v-model="formPengaturan.waktu_selesai" 
+                                        class="h-9 text-sm" 
+                                        required
+                                    />
+                                    <p class="text-[10px] text-muted-foreground">Waktu akhir sesi absensi ditutup</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="grid grid-cols-4 items-center gap-4">
-                            <label for="waktu_selesai" class="text-right text-sm font-medium">Jam Tutup</label>
-                            <Input 
-                                id="waktu_selesai" 
-                                type="time" 
-                                v-model="formPengaturan.waktu_selesai" 
-                                class="col-span-3" 
-                                required
-                            />
+
+                        <!-- BAGIAN 2: RENTANG DATANG NORMAL -->
+                        <div class="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                                    2. Rentang Jam Datang Normal
+                                </span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 font-bold">
+                                    Status: Hadir
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1.5">
+                                    <label for="jam_normal_mulai" class="text-xs font-semibold text-foreground">Mulai Datang Normal</label>
+                                    <Input 
+                                        id="jam_normal_mulai" 
+                                        type="time" 
+                                        v-model="formPengaturan.jam_normal_mulai" 
+                                        class="h-9 text-sm bg-background" 
+                                        required
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label for="jam_normal_selesai" class="text-xs font-semibold text-foreground">Selesai Datang Normal</label>
+                                    <Input 
+                                        id="jam_normal_selesai" 
+                                        type="time" 
+                                        v-model="formPengaturan.jam_normal_selesai" 
+                                        class="h-9 text-sm bg-background" 
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-emerald-700 dark:text-emerald-400">
+                                Guru yang absen pada rentang ini akan tercatat dengan status <strong>Hadir</strong> (Tepat Waktu).
+                            </p>
+                        </div>
+
+                        <!-- BAGIAN 3: RENTANG DATANG TERLAMBAT -->
+                        <div class="p-3.5 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                                    3. Rentang Jam Datang Terlambat
+                                </span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 font-bold">
+                                    Status: Hadir (Terlambat)
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1.5">
+                                    <label for="jam_terlambat_mulai" class="text-xs font-semibold text-foreground">Mulai Datang Terlambat</label>
+                                    <Input 
+                                        id="jam_terlambat_mulai" 
+                                        type="time" 
+                                        v-model="formPengaturan.jam_terlambat_mulai" 
+                                        class="h-9 text-sm bg-background" 
+                                        required
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label for="jam_terlambat_selesai" class="text-xs font-semibold text-foreground">Selesai Datang Terlambat</label>
+                                    <Input 
+                                        id="jam_terlambat_selesai" 
+                                        type="time" 
+                                        v-model="formPengaturan.jam_terlambat_selesai" 
+                                        class="h-9 text-sm bg-background" 
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-amber-700 dark:text-amber-400">
+                                Guru yang absen pada rentang ini akan tercatat dengan status <strong>Hadir (Terlambat)</strong>.
+                            </p>
+                        </div>
+
+                        <!-- RINGKASAN VALIDASI -->
+                        <div class="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-900 dark:text-blue-200 border border-blue-200 dark:border-blue-900 text-xs space-y-1">
+                            <p class="font-semibold flex items-center gap-1.5">
+                                <Clock class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                                Ketentuan Rentang Waktu:
+                            </p>
+                            <p class="leading-relaxed text-[11px]">
+                                Jam normal dan jam terlambat <strong>harus berada di dalam rentang Jam Mulai ({{ formPengaturan.waktu_mulai }}) dan Jam Tutup ({{ formPengaturan.waktu_selesai }})</strong>.
+                            </p>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" @click="isDialogOpen = false" type="button">Batal</Button>
-                        <Button type="button" @click="submitPengaturan" :disabled="formPengaturan.processing">
-                            {{ formPengaturan.processing ? 'Menyimpan...' : 'Simpan Perubahan' }}
+
+                    <DialogFooter class="gap-2 sm:gap-0 pt-2 border-t border-border">
+                        <Button variant="outline" @click="isDialogOpen = false" type="button" class="cursor-pointer">Batal</Button>
+                        <Button type="button" @click="submitPengaturan" :disabled="formPengaturan.processing" class="cursor-pointer font-semibold">
+                            {{ formPengaturan.processing ? 'Menyimpan...' : 'Simpan Pengaturan Jam' }}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

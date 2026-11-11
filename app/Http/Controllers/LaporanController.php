@@ -284,7 +284,22 @@ class LaporanController extends Controller
         }
 
         if ($request->filled('status') && $request->input('status') !== 'semua') {
-            $query->where('status', $request->input('status'));
+            if ($request->input('status') === 'Hadir (Terlambat)') {
+                $query->where('status', 'Hadir')->where(function($q) {
+                    $q->where('is_terlambat', true)
+                      ->orWhere('keterangan', 'like', '%Terlambat%');
+                });
+            } else if ($request->input('status') === 'Hadir') {
+                $query->where('status', 'Hadir')->where(function($q) {
+                    $q->where('is_terlambat', false)
+                      ->where(function($sq) {
+                          $sq->whereNull('keterangan')
+                             ->orWhere('keterangan', 'not like', '%Terlambat%');
+                      });
+                });
+            } else {
+                $query->where('status', $request->input('status'));
+            }
         }
 
         if ($dates) {
@@ -582,7 +597,22 @@ class LaporanController extends Controller
         }
 
         if ($request->filled('status') && $request->input('status') !== 'semua') {
-            $query->where('status', $request->input('status'));
+            if ($request->input('status') === 'Hadir (Terlambat)') {
+                $query->where('status', 'Hadir')->where(function($q) {
+                    $q->where('is_terlambat', true)
+                      ->orWhere('keterangan', 'like', '%Terlambat%');
+                });
+            } else if ($request->input('status') === 'Hadir') {
+                $query->where('status', 'Hadir')->where(function($q) {
+                    $q->where('is_terlambat', false)
+                      ->where(function($sq) {
+                          $sq->whereNull('keterangan')
+                             ->orWhere('keterangan', 'not like', '%Terlambat%');
+                      });
+                });
+            } else {
+                $query->where('status', $request->input('status'));
+            }
         }
 
         if ($dates) {

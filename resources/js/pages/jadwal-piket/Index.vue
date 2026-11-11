@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import debounce from 'lodash/debounce';
 import { 
     Search, 
@@ -18,6 +18,14 @@ import {
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from '@/components/ui/dialog';
 import Swal from 'sweetalert2';
 
 interface JamPelajaranItem {
@@ -72,6 +80,11 @@ const props = defineProps<{
         minggu: number;
     };
     totalPiketAll?: number;
+    pengaturan?: {
+        waktu_mulai: string;
+        waktu_selesai: string;
+        keterangan?: string | null;
+    };
 }>();
 
 defineOptions({
@@ -84,6 +97,45 @@ defineOptions({
         ],
     },
 });
+
+const isPengaturanOpen = ref(false);
+const formPengaturan = useForm({
+    waktu_mulai: props.pengaturan?.waktu_mulai || '06:30',
+    waktu_selesai: props.pengaturan?.waktu_selesai || '16:00',
+    keterangan: props.pengaturan?.keterangan || '',
+});
+
+const openPengaturanModal = () => {
+    formPengaturan.waktu_mulai = props.pengaturan?.waktu_mulai || '06:30';
+    formPengaturan.waktu_selesai = props.pengaturan?.waktu_selesai || '16:00';
+    formPengaturan.keterangan = props.pengaturan?.keterangan || '';
+    isPengaturanOpen.value = true;
+};
+
+const submitPengaturan = () => {
+    formPengaturan.post('/jadwal-piket/pengaturan', {
+        preserveScroll: true,
+        onSuccess: () => {
+            isPengaturanOpen.value = false;
+            Swal.fire({
+                title: 'Berhasil!',
+                text: 'Pengaturan batas waktu pelaporan piket berhasil diperbarui.',
+                icon: 'success',
+                timer: 3000,
+                showConfirmButton: false
+            });
+        },
+        onError: (errors) => {
+            const errorMessages = Object.values(errors);
+            const errorMsg = errorMessages.length > 0 ? errorMessages[0] : 'Terjadi kesalahan validasi pengaturan waktu.';
+            Swal.fire({
+                title: 'Gagal Menyimpan!',
+                text: errorMsg as string,
+                icon: 'error'
+            });
+        }
+    });
+};
 
 const search = ref(props.filters?.search || '');
 const filterType = ref(props.filters?.filter_type || 'minggu');
@@ -281,6 +333,11 @@ const getDayBadgeClass = (dayName: string) => {
                 </p>
             </div>
             <div class="flex items-center gap-2">
+                <Button variant="outline" class="gap-2 shadow-xs cursor-pointer border-emerald-300 dark:border-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/60" @click="openPengaturanModal">
+                    <Clock class="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    <span class="hidden sm:inline">Pengaturan Batas Waktu</span>
+                    <span class="sm:hidden">Batas Waktu</span>
+                </Button>
                 <Button as-child class="w-full sm:w-auto shadow-sm">
                     <Link href="/jadwal-piket/create">
                         <Plus class="mr-2 h-4 w-4" /> Tambah Jadwal Piket
@@ -636,5 +693,70 @@ const getDayBadgeClass = (dayName: string) => {
                 />
             </template>
         </div>
+
+        <!-- Dialog Pengaturan Batas Waktu Piket -->
+        <Dialog :open="isPengaturanOpen" @update:open="isPengaturanOpen = $event">
+            <DialogContent class="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2 text-lg">
+                        <Clock class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        Pengaturan Batas Waktu Pelaporan Piket
+                    </DialogTitle>
+                    <DialogDescription>
+                        Atur jam batas akhir bagi guru piket untuk mengisi absensi & laporan kelas hari ini.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form @submit.prevent="submitPengaturan" class="space-y-4 py-2">
+                    <div class="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1.5">
+                                <label for="waktu_mulai" class="text-xs font-semibold text-foreground">Jam Mulai Sesi</label>
+                                <Input 
+                                    id="waktu_mulai" 
+                                    type="time" 
+                                    v-model="formPengaturan.waktu_mulai" 
+                                    class="h-9 text-sm bg-background" 
+                                    required 
+                                />
+                                <p class="text-[10px] text-muted-foreground">Waktu awal pelaporan piket dibuka</p>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label for="waktu_selesai" class="text-xs font-semibold text-foreground">Jam Batas Akhir</label>
+                                <Input 
+                                    id="waktu_selesai" 
+                                    type="time" 
+                                    v-model="formPengaturan.waktu_selesai" 
+                                    class="h-9 text-sm bg-background font-bold text-emerald-700 dark:text-emerald-400" 
+                                    required 
+                                />
+                                <p class="text-[10px] text-muted-foreground">Batas akhir pengisian form piket</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-3 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/30 text-xs text-blue-900 dark:text-blue-300 space-y-1">
+                        <div class="font-bold flex items-center gap-1.5">
+                            <span class="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                            Ketentuan Batas Waktu:
+                        </div>
+                        <ul class="list-disc list-inside space-y-0.5 text-[11px] opacity-90 pl-1">
+                            <li>Guru piket wajib menyelesaikan pengisian laporan sebelum pukul <strong>{{ formPengaturan.waktu_selesai || '16:00' }} WIB</strong>.</li>
+                            <li>Tersedia countdown timer di form pelaporan guru piket.</li>
+                            <li>Jika melewati batas waktu, form otomatis terkunci dan guru harus mendapatkan persetujuan izin susulan dari Wakasek.</li>
+                        </ul>
+                    </div>
+
+                    <DialogFooter class="gap-2 sm:gap-0">
+                        <Button type="button" variant="outline" @click="isPengaturanOpen = false">
+                            Batal
+                        </Button>
+                        <Button type="submit" :disabled="formPengaturan.processing" class="bg-emerald-600 hover:bg-emerald-700 text-white">
+                            {{ formPengaturan.processing ? 'Menyimpan...' : 'Simpan Pengaturan' }}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

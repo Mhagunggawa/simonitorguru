@@ -93,7 +93,9 @@ const formatDate = (dateString: string) => {
 const getStatusBadge = (status: string) => {
     switch (status) {
         case 'Hadir':
-            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800';
+            return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-semibold';
+        case 'Hadir (Terlambat)':
+            return 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-800 font-bold';
         case 'Izin':
             return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800';
         case 'Sakit':
@@ -103,6 +105,14 @@ const getStatusBadge = (status: string) => {
         default:
             return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
     }
+};
+
+const getItemStatus = (item: any): string => {
+    if (item.display_status) return item.display_status;
+    if (item.status === 'Hadir' && (item.is_terlambat || (item.keterangan && item.keterangan.includes('Terlambat')))) {
+        return 'Hadir (Terlambat)';
+    }
+    return item.status || 'Hadir';
 };
 </script>
 
@@ -127,7 +137,8 @@ const getStatusBadge = (status: string) => {
             <div class="flex flex-wrap items-center gap-2 flex-1">
                 <select v-model="filterStatus" class="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
                     <option value="semua">Semua Status</option>
-                    <option value="Hadir">Hadir</option>
+                    <option value="Hadir">Hadir (Tepat Waktu)</option>
+                    <option value="Hadir (Terlambat)">Hadir (Terlambat)</option>
                     <option value="Izin">Izin</option>
                     <option value="Sakit">Sakit</option>
                     <option value="Alpha">Alpha</option>
@@ -219,8 +230,8 @@ const getStatusBadge = (status: string) => {
                         <td class="px-4 py-3 whitespace-nowrap">{{ formatDate(item.tanggal) }}</td>
                         <td class="px-4 py-3 font-medium text-foreground">{{ item.user?.name || '-' }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <span :class="['px-2.5 py-0.5 rounded-full text-xs font-semibold', getStatusBadge(item.status || 'Hadir')]">
-                                {{ item.status || 'Hadir' }}
+                            <span :class="['px-2.5 py-0.5 rounded-full text-xs font-semibold', getStatusBadge(getItemStatus(item))]">
+                                {{ getItemStatus(item) }}
                             </span>
                         </td>
                         <td class="px-4 py-3 text-muted-foreground whitespace-nowrap">
@@ -270,8 +281,8 @@ const getStatusBadge = (status: string) => {
                     <div class="flex flex-col gap-1">
                         <span class="font-semibold text-foreground text-sm">{{ item.user?.name || '-' }}</span>
                         <div class="flex items-center gap-2">
-                            <span :class="['px-2 py-0.5 w-fit rounded-md text-[10px] font-medium', getStatusBadge(item.status || 'Hadir')]">
-                                {{ item.status || 'Hadir' }}
+                            <span :class="['px-2 py-0.5 w-fit rounded-md text-[10px] font-medium', getStatusBadge(getItemStatus(item))]">
+                                {{ getItemStatus(item) }}
                             </span>
                             <span class="text-xs text-muted-foreground">{{ formatDate(item.tanggal) }}</span>
                         </div>

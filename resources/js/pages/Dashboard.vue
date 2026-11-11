@@ -725,15 +725,7 @@ const superAdminCards = computed(() => [
                         </div>
                     </Link>
 
-                    <Link href="/jadwal-mapel" class="flex items-center gap-3 p-4 rounded-2xl bg-card border border-sidebar-border/70 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-teal-500/30 transition-all group">
-                        <div class="p-2.5 rounded-xl bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400 group-hover:scale-105 transition-transform">
-                            <Calendar class="w-5 h-5" />
-                        </div>
-                        <div class="min-w-0">
-                            <span class="font-semibold text-sm block truncate">Jadwal Mapel</span>
-                            <span class="text-xs text-muted-foreground">Jadwal Mengajar</span>
-                        </div>
-                    </Link>
+
 
                     <Link href="/pelaporan-piket" class="flex items-center gap-3 p-4 rounded-2xl bg-card border border-sidebar-border/70 shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-amber-500/30 transition-all group">
                         <div class="p-2.5 rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 group-hover:scale-105 transition-transform">

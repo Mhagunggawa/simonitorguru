@@ -30,7 +30,7 @@
                 <td>{{ $item->tanggal ?? '-' }}</td>
                 <td>{{ $item->user->name ?? '-' }}</td>
                 <td>{{ $item->waktu_absen ?? '-' }}</td>
-                <td>{{ $item->status ?? '-' }}</td>
+                <td>{{ $item->display_status ?? (($item->status === 'Hadir' && ($item->is_terlambat || str_contains($item->keterangan ?? '', 'Terlambat'))) ? 'Hadir (Terlambat)' : $item->status) }}</td>
                 <td>{{ $item->keterangan ?? ($item->foto_bukti ? 'Absen Mandiri (Foto)' : '-') }}</td>
             </tr>
             @endforeach

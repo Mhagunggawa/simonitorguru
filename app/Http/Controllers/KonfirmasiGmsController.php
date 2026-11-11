@@ -59,6 +59,8 @@ class KonfirmasiGmsController extends Controller
             $user = $jadwal->user;
             $absensi = $absensiMap->get($jadwal->user_id);
 
+            $statusDisplay = $absensi ? ($absensi->is_terlambat || str_contains($absensi->keterangan ?? '', 'Terlambat') ? 'Hadir (Terlambat)' : $absensi->status) : 'Belum Absen';
+
             return [
                 'user_id' => $user->id,
                 'name' => $user->name,
@@ -66,7 +68,8 @@ class KonfirmasiGmsController extends Controller
                 'tipe_guru' => $user->tipeGuru?->nama_tipe ?? '-',
                 'status_pegawai' => strtoupper($user->status_pegawai ?? '-'),
                 'is_confirmed' => (bool)$absensi,
-                'status' => $absensi ? $absensi->status : 'Belum Absen',
+                'status' => $statusDisplay,
+                'is_terlambat' => (bool)($absensi?->is_terlambat),
                 'waktu_absen' => $absensi?->waktu_absen ? Carbon::parse($absensi->waktu_absen)->format('H:i') : '-',
                 'foto_bukti' => $absensi?->foto_bukti,
                 'keterangan' => $absensi?->keterangan,
@@ -78,8 +81,8 @@ class KonfirmasiGmsController extends Controller
 
         // Hitung statistik
         $totalJadwal = $teachers->count();
-        $hadirMandiri = $teachers->where('status', 'Hadir')->where('is_manual', false)->count();
-        $hadirManual = $teachers->where('status', 'Hadir')->where('is_manual', true)->count();
+        $hadirMandiri = $teachers->filter(fn($t) => in_array($t['status'], ['Hadir', 'Hadir (Terlambat)']) && !$t['is_manual'])->count();
+        $hadirManual = $teachers->filter(fn($t) => in_array($t['status'], ['Hadir', 'Hadir (Terlambat)']) && $t['is_manual'])->count();
         $izin = $teachers->where('status', 'Izin')->count();
         $sakit = $teachers->where('status', 'Sakit')->count();
         $alpha = $teachers->where('status', 'Alpha')->count();
@@ -136,6 +139,15 @@ class KonfirmasiGmsController extends Controller
 
         $user = User::findOrFail($validated['user_id']);
 
+        $isTerlambat = false;
+        if ($validated['status'] === 'Hadir') {
+            $pengaturan = PengaturanGms::first();
+            $currentTimeStr = now()->format('H:i:s');
+            if ($pengaturan && $pengaturan->jam_normal_selesai && $currentTimeStr > $pengaturan->jam_normal_selesai) {
+                $isTerlambat = true;
+            }
+        }
+
         AbsensiGms::updateOrCreate(
             [
                 'user_id' => $validated['user_id'],
@@ -143,6 +155,7 @@ class KonfirmasiGmsController extends Controller
             ],
             [
                 'status' => $validated['status'],
+                'is_terlambat' => $isTerlambat,
                 'waktu_absen' => now()->format('H:i:s'),
                 'keterangan' => $validated['keterangan'] ?? null,
                 'confirmed_by' => auth()->id(),

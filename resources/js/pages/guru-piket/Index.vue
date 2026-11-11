@@ -11,7 +11,7 @@ import {
     DialogDescription,
     DialogFooter
 } from '@/components/ui/dialog';
-import { ClipboardList, AlertCircle, CheckCircle, UserX, Info } from '@lucide/vue';
+import { ClipboardList, AlertCircle, CheckCircle, UserX, Info, Clock, Hourglass } from '@lucide/vue';
 import Swal from 'sweetalert2';
 import { onMounted, watch, computed, ref } from 'vue';
 
@@ -25,6 +25,10 @@ const props = defineProps<{
         keterangan?: string | null;
         piket_waktu_mulai?: string | null;
         piket_waktu_selesai?: string | null;
+        is_expired?: boolean;
+        batas_waktu_pelaporan?: string | null;
+        has_approved_izin?: boolean;
+        has_pending_izin?: boolean;
         titik: { nama_titik: string };
         jam_pelajarans: Array<{ 
             id: number; 
@@ -43,6 +47,11 @@ const props = defineProps<{
     activePiketStatus?: string | null;
     activePiketKeterangan?: string | null;
     serverTime: string;
+    pengaturan?: {
+        waktu_mulai: string;
+        waktu_selesai: string;
+        keterangan?: string | null;
+    };
 }>();
 
 defineOptions({
@@ -154,25 +163,68 @@ const formatDate = (dateStr: string) => {
 
 const formatTime = (time: string) => time ? time.substring(0, 5) : '';
 
+const requestIzinSusulan = (jadwalId: number) => {
+    Swal.fire({
+        title: 'Minta Izin Susulan?',
+        text: 'Waktu pelaporan piket telah melewati batas waktu yang ditentukan. Apakah Anda ingin mengajukan izin susulan ke Wakasek agar form laporan dapat dibuka kembali?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#d97706',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Ya, Ajukan Izin ke Wakasek',
+        cancelButtonText: 'Batal',
+        reverseButtons: true,
+    }).then((result) => {
+        if (result.isConfirmed) {
+            router.post(`/pelaporan-piket/${jadwalId}/minta-izin-susulan`, {}, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    Swal.fire({
+                        title: 'Permohonan Terkirim!',
+                        text: 'Permohonan izin susulan telah dikirimkan ke Wakasek. Silakan hubungi Wakasek untuk memberikan persetujuan akses.',
+                        icon: 'success',
+                        timer: 3000,
+                        showConfirmButton: false,
+                    });
+                }
+            });
+        }
+    });
+};
+
 const getReportState = (jam: any, item?: any) => {
-    // Batas waktu sesi piket dihitung berdasarkan keseluruhan rentang jam piket guru pada jadwal ini
-    const mulaiStr = item?.piket_waktu_mulai || jam?.waktu_mulai;
-    const selesaiStr = item?.piket_waktu_selesai || jam?.waktu_selesai;
+    // 1. Jika jadwal secara keseluruhan sudah melewati batas waktu yang disetting
+    if (item?.is_expired) {
+        return 'SESI_DITUTUP';
+    }
+
+    // 2. Waktu mulai mengikuti jam pelajaran spesifik ini (jam.waktu_mulai)
+    const mulaiStr = jam?.waktu_mulai;
+    // 3. Batas waktu pelaporan mengikuti batas waktu yang disetting di pengaturan piket (misal 16:00 WIB)
+    const selesaiStr = item?.batas_waktu_pelaporan || props.pengaturan?.waktu_selesai || '16:00';
 
     if (!mulaiStr || !selesaiStr) return 'INVALID';
     
-    const now = new Date(props.serverTime);
+    const now = new Date(props.serverTime || new Date());
     
     let mStr = String(mulaiStr);
     if (mStr.length <= 5) mStr += ':00';
     const [jamMulai, menitMulai, detikMulai = 0] = mStr.split(':').map(Number);
-    const waktuMulai = new Date(props.serverTime);
+    const waktuMulai = new Date(now);
+    if (item?.tanggal_piket) {
+        const [tglY, tglM, tglD] = item.tanggal_piket.substring(0, 10).split('-').map(Number);
+        waktuMulai.setFullYear(tglY, tglM - 1, tglD);
+    }
     waktuMulai.setHours(jamMulai, menitMulai, detikMulai, 0);
     
     let sStr = String(selesaiStr);
     if (sStr.length <= 5) sStr += ':00';
     const [jamSelesai, menitSelesai, detikSelesai = 0] = sStr.split(':').map(Number);
-    const waktuSelesai = new Date(props.serverTime);
+    const waktuSelesai = new Date(now);
+    if (item?.tanggal_piket) {
+        const [tglY, tglM, tglD] = item.tanggal_piket.substring(0, 10).split('-').map(Number);
+        waktuSelesai.setFullYear(tglY, tglM - 1, tglD);
+    }
     waktuSelesai.setHours(jamSelesai, menitSelesai, detikSelesai, 0);
     
     if (now < waktuMulai) {
@@ -230,6 +282,19 @@ const activeJadwalPikets = computed(() => {
             </div>
         </div>
 
+        <!-- Banner Informasi Batas Waktu Piket -->
+        <div v-if="pengaturan" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-900 dark:text-emerald-200 text-xs shadow-xs">
+            <div class="flex items-center gap-2">
+                <Clock class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>
+                    Batas waktu pelaporan tugas piket: sampai pukul <strong>{{ pengaturan.waktu_selesai }} WIB</strong>. Pengisian setelah batas waktu memerlukan persetujuan izin susulan dari Wakasek.
+                </span>
+            </div>
+            <div class="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium pl-6 sm:pl-0 shrink-0">
+                Sesi dibuka: {{ pengaturan.waktu_mulai }} WIB
+            </div>
+        </div>
+
         <!-- Desktop Table View -->
         <div class="hidden md:block bg-white dark:bg-slate-900 shadow-sm sm:rounded-2xl border border-gray-100 dark:border-slate-800 overflow-hidden">
             <table class="w-full text-sm text-left whitespace-nowrap">
@@ -254,8 +319,8 @@ const activeJadwalPikets = computed(() => {
                                     <span class="text-xs text-gray-500 dark:text-gray-400 ml-1">
                                         Jam KBM: {{ formatTime(jam.waktu_mulai) }} - {{ formatTime(jam.waktu_selesai) }}
                                     </span>
-                                    <span v-if="item.piket_waktu_selesai" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium ml-1">
-                                        Batas Piket: s/d {{ formatTime(item.piket_waktu_selesai) }} WIB
+                                    <span class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium ml-1">
+                                        Batas Pelaporan: s/d {{ item.batas_waktu_pelaporan || pengaturan?.waktu_selesai || '16:00' }} WIB
                                     </span>
                                 </div>
                             </td>
@@ -284,21 +349,55 @@ const activeJadwalPikets = computed(() => {
                                     </span>
                                 </template>
                                 
-                                <!-- Normal flow: Masih ada kelas yang belum dilaporkan -->
-                                <template v-else-if="getReportState(jam, item) === 'AKTIF' || getReportState(jam, item) === 'SESI_DITUTUP'">
+                                <!-- Normal flow: Waktu masih aktif dan belum dilaporkan -->
+                                <template v-else-if="getReportState(jam, item) === 'AKTIF'">
                                     <Link 
                                         :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
-                                        class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-9 px-4 py-2 shadow-sm whitespace-nowrap"
-                                        :class="getReportState(jam, item) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
+                                        class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-9 px-4 py-2 shadow-sm whitespace-nowrap bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90 cursor-pointer"
                                     >
-                                        <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam, item) === 'AKTIF' ? 'Isi Laporan' : 'Isi Laporan Susulan' }}
+                                        <ClipboardList class="h-4 w-4 mr-2" /> Isi Laporan
                                         <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
                                     </Link>
                                 </template>
+
+                                <!-- Sesi Ditutup / Melewati Batas Waktu -->
+                                <template v-else-if="getReportState(jam, item) === 'SESI_DITUTUP'">
+                                    <!-- Jika izin sudah disetujui oleh Wakasek -->
+                                    <template v-if="item.has_approved_izin">
+                                        <Link 
+                                            :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-9 px-4 py-2 shadow-sm whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-white cursor-pointer"
+                                        >
+                                            <ClipboardList class="h-4 w-4 mr-2" /> Isi Laporan Susulan
+                                            <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
+                                        </Link>
+                                    </template>
+
+                                    <!-- Jika permohonan sedang menunggu persetujuan Wakasek -->
+                                    <template v-else-if="item.has_pending_izin">
+                                        <span class="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 whitespace-nowrap">
+                                            <Hourglass class="h-3.5 w-3.5 animate-spin" /> Menunggu Persetujuan Wakasek
+                                        </span>
+                                    </template>
+
+                                    <!-- Jika belum mengajukan izin susulan -->
+                                    <template v-else>
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            @click="requestIzinSusulan(item.id)"
+                                            class="border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/50 text-xs font-semibold h-9 px-3 gap-1.5 shadow-xs cursor-pointer"
+                                        >
+                                            <AlertCircle class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                            Minta Izin Susulan
+                                        </Button>
+                                    </template>
+                                </template>
                                 
                                 <template v-else-if="getReportState(jam, item) === 'BELUM_MULAI'">
-                                    <span class="inline-flex items-center rounded-md bg-gray-100 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap shadow-sm border border-gray-200 dark:border-slate-700">
-                                        Belum Mulai <span v-if="jam.total_classes" class="ml-1 text-[11px] text-muted-foreground">({{ jam.total_classes }} Kelas)</span>
+                                    <span class="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap shadow-xs border border-slate-200 dark:border-slate-700">
+                                        <Clock class="h-3.5 w-3.5 text-slate-500" />
+                                        Belum Mulai (Mulai {{ formatTime(jam.waktu_mulai) }})
                                     </span>
                                 </template>
                             </td>
@@ -358,9 +457,9 @@ const activeJadwalPikets = computed(() => {
                         <span class="font-medium text-right">{{ formatTime(jam.waktu_mulai) }} - {{ formatTime(jam.waktu_selesai) }}</span>
                     </div>
 
-                    <div v-if="item.piket_waktu_selesai" class="flex justify-between items-center text-xs ml-2 mt-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                    <div class="flex justify-between items-center text-xs ml-2 mt-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
                         <span>Batas Pelaporan Piket:</span>
-                        <span>s/d {{ formatTime(item.piket_waktu_selesai) }} WIB</span>
+                        <span>s/d {{ item.batas_waktu_pelaporan || pengaturan?.waktu_selesai || '16:00' }} WIB</span>
                     </div>
                     
                     <div class="mt-3 ml-2 pt-3 border-t border-gray-100 dark:border-slate-800/80">
@@ -385,20 +484,47 @@ const activeJadwalPikets = computed(() => {
                             </div>
                         </template>
 
-                        <template v-else-if="getReportState(jam, item) === 'AKTIF' || getReportState(jam, item) === 'SESI_DITUTUP'">
+                        <template v-else-if="getReportState(jam, item) === 'AKTIF'">
                             <Link 
                                 :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
-                                class="flex items-center justify-center w-full rounded-xl text-sm font-semibold transition-colors h-10 px-4 py-2 shadow-sm"
-                                :class="getReportState(jam, item) === 'AKTIF' ? 'bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90' : 'bg-yellow-500 text-white hover:bg-yellow-600'"
+                                class="flex items-center justify-center w-full rounded-xl text-sm font-semibold transition-colors h-10 px-4 py-2 shadow-sm bg-[#79AE6F] text-white hover:bg-[#79AE6F]/90 cursor-pointer"
                             >
-                                <ClipboardList class="h-4 w-4 mr-2" /> {{ getReportState(jam, item) === 'AKTIF' ? 'Isi Laporan Sekarang' : 'Isi Laporan Susulan' }}
+                                <ClipboardList class="h-4 w-4 mr-2" /> Isi Laporan Sekarang
                                 <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
                             </Link>
                         </template>
+
+                        <template v-else-if="getReportState(jam, item) === 'SESI_DITUTUP'">
+                            <template v-if="item.has_approved_izin">
+                                <Link 
+                                    :href="`/pelaporan-piket/${item.id}/create?jam_pelajaran_id=${jam.id}`" 
+                                    class="flex items-center justify-center w-full rounded-xl text-sm font-semibold transition-colors h-10 px-4 py-2 shadow-sm bg-amber-500 hover:bg-amber-600 text-white cursor-pointer"
+                                >
+                                    <ClipboardList class="h-4 w-4 mr-2" /> Isi Laporan Susulan
+                                    <span v-if="jam.unreported_classes" class="ml-1 text-xs opacity-90">({{ jam.unreported_classes }} Kelas)</span>
+                                </Link>
+                            </template>
+                            <template v-else-if="item.has_pending_izin">
+                                <div class="flex items-center justify-center gap-1.5 w-full rounded-xl bg-amber-50 dark:bg-amber-950/40 px-4 py-2 text-xs font-semibold text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                    <Hourglass class="h-3.5 w-3.5 animate-spin" /> Menunggu Persetujuan Wakasek
+                                </div>
+                            </template>
+                            <template v-else>
+                                <Button 
+                                    variant="outline" 
+                                    @click="requestIzinSusulan(item.id)"
+                                    class="flex items-center justify-center w-full rounded-xl text-xs font-semibold h-10 border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/50 shadow-xs cursor-pointer gap-1.5"
+                                >
+                                    <AlertCircle class="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                    Waktu Habis - Minta Izin Susulan
+                                </Button>
+                            </template>
+                        </template>
                         
                         <template v-else-if="getReportState(jam, item) === 'BELUM_MULAI'">
-                            <div class="flex items-center justify-center w-full rounded-xl bg-gray-50 dark:bg-slate-800 px-4 py-2 text-sm font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-slate-700">
-                                Sesi Belum Mulai <span v-if="jam.total_classes" class="ml-1 text-xs text-muted-foreground">({{ jam.total_classes }} Kelas)</span>
+                            <div class="flex items-center justify-center gap-1.5 w-full rounded-xl bg-slate-100 dark:bg-slate-800/80 px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-xs">
+                                <Clock class="h-3.5 w-3.5 text-slate-500" />
+                                Belum Mulai (Mulai {{ formatTime(jam.waktu_mulai) }} WIB)
                             </div>
                         </template>
                     </div>
